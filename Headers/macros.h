@@ -1,0 +1,27 @@
+#define ENEMY_RADIUS 25.0f
+#define SPACESHIP_RADIUS 25.0f
+#define MISSILE_RADIUS 10.0f
+#define EXPLOSION_RADIUS 50.0f
+#define WINDOW_WIDTH 1000
+#define WINDOW_HEIGHT 1000
+
+#define ENEMY_TYPE_1 "Enemy_1"
+#define ENEMY_TYPE_1_ATTACK_CD 1
+
+#define ENEMY_TYPE_2 "Enemy_2"
+#define ENEMY_TYPE_2_ATTACK_CD 1.2
+
+#define ENEMY_TYPE_3 "Enemy_3"
+#define ENEMY_TYPE_3_ATTACK_CD 1.4
+
+#define SPACESHIP_HEALTH 50.0f
+
+#define ENEMY_SPAWN_TIMER 0.9f
+
+#define EXPLOSION_DMG_COOLDOWN 0.15f
+
+#define UP    0b00001  //1
+#define DOWN  0b00010  //2
+#define LEFT  0b00100  //4
+#define RIGHT 0b01000  //8
+#define SHOOT 0b10000  //16
