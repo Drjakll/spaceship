@@ -87,6 +87,9 @@ char* Iterate_Enemy_Data_List(Enemy_Data_List list, char* (*callback)(Enemy_Data
 
         char* str = callback(ptr->enemy_data);
         accum_str = Add_More_Chars(str, accum_str);
+
+        free(str);
+
         ptr = ptr->next;
     }
 
@@ -230,6 +233,8 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
         char* str = callback(ptr->data);
 
         accum_str = Add_More_Chars(str, accum_str);
+
+        free(str);
         
         ptr = ptr->next;
     }
@@ -238,13 +243,15 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
 
     char* final_str = malloc(size);
 
-    int index = strlen(accum_str) - 2;
+    size_t index = strlen(accum_str);
 
-    if(index > -1){
-        accum_str[index] = '\0';
+    if(index > 2){
+        accum_str[index - 2] = '\0';
     }
 
     snprintf(final_str, size, "[%s]", accum_str);
+
+    free(accum_str);
 
     return final_str;
 }
@@ -311,8 +318,6 @@ char* Extract_Projectile_Data_To_Str_JSON(Projectile_Data data){
 
 char* Convert_Data_To_String(Data data){
 
-    char* text = malloc(6000);
-
     int key_strokes = data.keys_down;
     int time = data.current_time_ms;
     int frame_number = data.frame_number;
@@ -330,21 +335,60 @@ char* Convert_Data_To_String(Data data){
 
     char* enemy_array = Iterate_Enemy_Data_List(enemy_data_list, Extract_Enemy_Data_To_Str_JSON);
 
-    int index = strlen(enemy_array) - 2;
+    size_t index = strlen(enemy_array);
 
-    if(index > -1){
-        enemy_array[index] = '\0';
+    if(index > 2){
+        enemy_array[index - 2] = '\0';
     }
 
     char* projectile_array = Iterate_Projectile_Data_List(projectile_data_list, Extract_Projectile_Data_To_Str_JSON);
 
-    index = strlen(projectile_array) - 2;
+    index = strlen(projectile_array);
 
-    if(index > -1){
-        projectile_array[index] = '\0';
+    if(index > 2){
+        projectile_array[index - 2] = '\0';
     }
 
-    snprintf(text, 6000, 
+    int needed = snprintf(
+                        NULL,
+                        0,
+                        "{\n"
+                            "\t\"key_strokes\": %d,\n" 
+                            "\t\"timestamp\": %d,\n" 
+                            "\t\"score\": %d,\n"
+                            "\t\"frame_number\": %d,\n"
+                            "\t\"spaceship\": {\n"
+                                "\t\t\"health\": %f,\n"
+                                "\t\t\"size\": %f,\n"
+                                "\t\t\"weapon_cd\": %f,\n"
+                                "\t\t\"position\": {\n"
+                                    "\t\t\t\"x\": %f,\n"
+                                    "\t\t\t\"y\": %f\n"
+                                "\t\t}\n"
+                            "\t},\n"
+                            "\t\"enemies\": [\n"
+                                "%s\n"
+                            "\t],\n"
+                            "\t\"projectiles\": [\n"
+                                "%s\n"
+                            "\t]\n"
+                        "},\n", 
+                            key_strokes, 
+                            time,
+                            current_score,
+                            frame_number,
+                            spaceship_health,
+                            spaceship_radius,
+                            spaceship_weapon_cd,
+                            spaceship_location.x,
+                            spaceship_location.y,
+                            enemy_array,
+                            projectile_array
+                    );
+
+    char* text = malloc(needed + 1);
+
+    snprintf(text, needed + 1, 
                                 "{\n"
                                     "\t\"key_strokes\": %d,\n" 
                                     "\t\"timestamp\": %d,\n" 
@@ -378,6 +422,9 @@ char* Convert_Data_To_String(Data data){
                                     enemy_array,
                                     projectile_array
                                 );
+
+    free(projectile_array);
+    free(enemy_array);
 
     return text;
 

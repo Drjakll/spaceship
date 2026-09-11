@@ -123,11 +123,17 @@ void Insert_Projectile(Ammo* ammo){
     projectiles->tail = new_node;
 }
 
-void Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
+bool Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
+
+    bool collision_existed = false;
 
     if(projectiles->head){
 
         bool collided = callback(projectiles->head->ammo, deltaTime);
+
+        if(collided){
+            collision_existed = true;
+        }
 
         if(collided || projectiles->head->ammo->position.y < -MISSILE_RADIUS){
 
@@ -144,17 +150,17 @@ void Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
         }
 
         if(!projectiles->head){
-            return;
+            return collision_existed;
         }
 
     } else {
         
-        return;
+        return collision_existed;
 
     }
 
     if(!projectiles->head){
-        return;
+        return collision_existed;
     }
     
     Projectile_Node* ptr = projectiles->head;
@@ -162,6 +168,10 @@ void Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
     while(ptr && ptr->next){
 
         bool collided = callback(ptr->next->ammo, deltaTime);
+
+        if(collided){
+            collision_existed = true;
+        }
 
         if(collided || ptr->next->ammo->position.y < -MISSILE_RADIUS){
 
@@ -184,5 +194,7 @@ void Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
         ptr = ptr->next;
 
     }
+
+    return collision_existed;
 
 }

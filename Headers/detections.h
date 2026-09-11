@@ -34,7 +34,8 @@ bool Detect_Enemy_Collisions(Enemy *enemy, double deltaTime){
 
     float collision_min = current_ammo->size_r + enemy->size_r;
 
-    if(dist < collision_min && enemy->health >= 0.0f){
+    if(dist < collision_min && !enemy->dead){
+        
         enemy->health -= current_ammo->damage;
 
         if(enemy->health <= 0.0f){

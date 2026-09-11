@@ -21,6 +21,8 @@
 
 #define EXPLOSION_DMG_COOLDOWN 0.15f
 
+#define GAME_TIME 180000
+
 #define UP    0b00001  //1
 #define DOWN  0b00010  //2
 #define LEFT  0b00100  //4

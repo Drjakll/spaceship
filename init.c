@@ -75,7 +75,7 @@ int main(){
     //The enemy spawn_timer
     float spawn_timer = ENEMY_SPAWN_TIMER;
 
-    int accumulated_time = 0;
+    double accumulated_time = 0;
 
     spaceship = Create_Spaceship();
 
@@ -192,7 +192,7 @@ int main(){
 
             DrawTextEx(font, health_text, (Vector2){WINDOW_WIDTH - 300, 50}, 24, 1, WHITE);
 
-            snprintf(time_elapsed, 25, "Time: %d", accumulated_time);
+            snprintf(time_elapsed, 25, "Time: %d", (GAME_TIME - (int)accumulated_time));
 
             DrawTextEx(font, time_elapsed, (Vector2){WINDOW_WIDTH/2, 50}, 24, 1, WHITE);
 
@@ -202,9 +202,9 @@ int main(){
         frame_count++;
 
         //Collects data
-        accumulated_time += floor(delta_time * 1000);
+        accumulated_time += delta_time * 1000;
 
-        if(frame_count % 4 != 0){
+        if(frame_count % 4 != 0 && keys_down == 0){
             continue;
         }
 
@@ -228,7 +228,7 @@ int main(){
 
         Data data_entry = {
             .keys_down = keys_down,
-            .current_time_ms = accumulated_time,
+            .current_time_ms = (int)accumulated_time,
             .spaceship_data = new_spaceship_data_entry,
             .enemy_data_list = *enemies_data,
             .projectile_data_list = *projectiles_data,
@@ -243,7 +243,7 @@ int main(){
             break;
         }
 
-        if(accumulated_time > 180000){
+        if(GAME_TIME - (int)(accumulated_time) < 0){
             break;
         }
     }
@@ -267,7 +267,16 @@ int main(){
     UnloadImage(ammo_image);
     UnloadImage(explosion_img);
 
+    UnloadTexture(enemy_model_1);
+    UnloadTexture(enemy_model_2);
+    UnloadTexture(enemy_model_3);
+    UnloadTexture(ammo_model);
+    UnloadTexture(explosion_model);
+    UnloadTexture(spaceship->model);
+
+    UnloadFont(font);
+
     CloseWindow();
 
-    return 1;
+    return 0;
 }
