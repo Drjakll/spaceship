@@ -100,6 +100,7 @@ int main(){
         if(IsKeyDown(KEY_A)){
             delta.x = -1;
             keys_down |= LEFT;
+
         } 
         else if(IsKeyDown(KEY_D)){
             delta.x = 1;
@@ -115,10 +116,11 @@ int main(){
             keys_down |= DOWN;
         }
 
+
         delta = Clamp(delta, spaceship->speed);
 
-        spaceship->position.x += delta.x;
-        spaceship->position.y += delta.y;
+        spaceship->position.x += delta.x * delta_time;
+        spaceship->position.y += delta.y * delta_time;
 
         if(spaceship->position.x > WINDOW_WIDTH - SPACESHIP_RADIUS){
             spaceship->position.x = WINDOW_WIDTH - SPACESHIP_RADIUS;
@@ -202,6 +204,10 @@ int main(){
         //Collects data
         accumulated_time += floor(delta_time * 1000);
 
+        if(frame_count % 4 != 0){
+            continue;
+        }
+
         Enemy_Data_List *enemies_data = calloc(1, sizeof(Enemy_Data_List));
         Projectile_Data_List *projectiles_data = calloc(1, sizeof(Projectile_Data_List));
 
@@ -209,10 +215,6 @@ int main(){
         current_enemy_data_list = enemies_data;
    
         current_projectile_data_list = projectiles_data;
-
-        if(frame_count % 4 != 0){
-            continue;
-        }
 
         Iterate_Enemies(Add_Enemy_Data_Wrapper, delta_time);
         Iterate_Projectiles(Add_Projectile_Data_Wrapper, delta_time);

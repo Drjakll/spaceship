@@ -159,6 +159,9 @@ char* Iterate_Projectile_Data_List(Projectile_Data_List list, char* (*callback)(
 
         char* str = callback(ptr->projectile_data);
         accum_str = Add_More_Chars(str, accum_str);
+
+        free(str);
+
         ptr = ptr->next;
     }
 
@@ -209,6 +212,7 @@ void Add_To_Data(Data data, Data_List *list){
     if(!list->head){
         list->head = new_node;
         list->tail = list->head;
+        return;
     }
 
     list->tail->next = new_node;
@@ -230,11 +234,17 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
         ptr = ptr->next;
     }
 
-    char* final_str = calloc(1,1);
+    size_t size = strlen(accum_str) + 3;
 
-    accum_str[strlen(accum_str) - 2] = '\0';
+    char* final_str = malloc(size);
 
-    snprintf(final_str, strlen(accum_str) + 3, "[%s]", accum_str);
+    int index = strlen(accum_str) - 2;
+
+    if(index > -1){
+        accum_str[index] = '\0';
+    }
+
+    snprintf(final_str, size, "[%s]", accum_str);
 
     return final_str;
 }
@@ -320,11 +330,19 @@ char* Convert_Data_To_String(Data data){
 
     char* enemy_array = Iterate_Enemy_Data_List(enemy_data_list, Extract_Enemy_Data_To_Str_JSON);
 
-    enemy_array[strlen(enemy_array) - 2] = '\0';
+    int index = strlen(enemy_array) - 2;
+
+    if(index > -1){
+        enemy_array[index] = '\0';
+    }
 
     char* projectile_array = Iterate_Projectile_Data_List(projectile_data_list, Extract_Projectile_Data_To_Str_JSON);
 
-    projectile_array[strlen(projectile_array) - 2] = '\0';
+    index = strlen(projectile_array) - 2;
+
+    if(index > -1){
+        projectile_array[index] = '\0';
+    }
 
     snprintf(text, 6000, 
                                 "{\n"

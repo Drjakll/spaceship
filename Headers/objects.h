@@ -195,7 +195,7 @@ Spaceship *Create_Spaceship() {
     defaultWeapon->Shoot = ShootMissile;
 
     spaceship->health = SPACESHIP_HEALTH;
-    spaceship->speed = 5.0f;
+    spaceship->speed = SPACESHIP_SPEED;
     spaceship->weapon = defaultWeapon;
     spaceship->size_r = SPACESHIP_RADIUS;
 
