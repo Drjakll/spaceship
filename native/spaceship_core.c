@@ -153,6 +153,17 @@ static void resolve_hazards(SpaceWorld *world) {
     }
 }
 
+static void resolve_escapes(SpaceWorld *world) {
+    for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+        SpaceEnemy *enemy = &world->enemies[e];
+        if (enemy->phase == 1 && enemy->y > SPACE_HEIGHT + 25) {
+            enemy->phase = 0;
+            ++world->escaped;
+            ++world->step_escapes;
+        }
+    }
+}
+
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
     if (!world || !actions || world->terminal) return false;
     for (int i = 0; i < world->config.num_agents; ++i) {
@@ -185,6 +196,7 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
         move_enemies(world);
         resolve_missiles(world);
         resolve_hazards(world);
+        resolve_escapes(world);
     }
     return true;
 }

@@ -171,6 +171,24 @@ static void test_hazards(void) {
     puts("PASS per-ship contact damage and finite explosion hazards");
 }
 
+static void test_escapes(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 3;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .x=250, .y=1024, .vy=240, .health=10};
+    world.enemies[1] = (SpaceEnemy){.phase=2, .x=750, .y=1026, .explosion_ticks=2};
+    world.enemies[2] = (SpaceEnemy){.phase=1, .x=500, .y=1020, .health=10};
+    CHECK(space_step(&world, actions));
+    CHECK(world.escaped == 1 && world.step_escapes == 1);
+    CHECK(world.enemies[0].phase == 0 && world.enemies[2].phase == 1);
+    CHECK(space_step(&world, actions));
+    CHECK(world.escaped == 1 && world.enemies[1].phase == 0);
+    puts("PASS exact-once live enemy escape accounting");
+}
+
 int main(void) {
     test_reset();
     test_movement();
@@ -178,6 +196,7 @@ int main(void) {
     test_waves();
     test_shared_damage();
     test_hazards();
+    test_escapes();
     puts("All core tests passed");
     return 0;
 }

@@ -55,3 +55,9 @@ Static analysis and whitespace checks passed; no new third-party dependencies. T
 Red: `make test`, exit 2: `FAIL tests/test_core.c:159: world.ships[0].health == 0 && world.ships[1].health == 40`.
 Green: `make test`, exit 0: `PASS per-ship contact damage and finite explosion hazards` and `All core tests passed`.
 Static analysis and whitespace checks passed; no new third-party dependencies. T005 commit: `526ccb8`.
+
+## T007 — escaped enemies
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:185: world.escaped == 1 && world.step_escapes == 1`.
+Green: `make test`, exit 0: `PASS exact-once live enemy escape accounting` and `All core tests passed`.
+Static analysis and whitespace checks passed; no new external dependencies. An escape occurs when a live enemy fully crosses the bottom (center y > 1025); explosions never count. T006 commit: `6de825e`.
