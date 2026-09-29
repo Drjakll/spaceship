@@ -55,7 +55,7 @@ enum { SPACE_RUNNING, SPACE_DEFEAT, SPACE_WAVE_COMPLETE, SPACE_DEADLINE, SPACE_E
 typedef struct {
     SpaceConfig config;
     uint32_t rng;
-    int tick, spawned, killed, escaped, unresolved, unspawned;
+    int tick, spawned, killed, escaped, unresolved, unspawned, score;
     int terminal, terminal_reason, overflow;
     int step_kills, step_escapes, step_deaths;
     float step_damage, reward;

@@ -137,3 +137,7 @@ Red: `make build/test_bots`, exit 2: undefined `_space_greedy_actions` and `_spa
 ## T018 — cooperative lane baseline
 
 Red: `make build/test_bots`, exit 2: undefined `_space_lane_actions` and `_space_lane_target`. Green: `make test`, exit 0: `PASS lane team splits threats and redistributes coverage after an ally dies`. Three separated threats get three distinct defenders; surviving ships repartition lanes after a death. Policy reads do not mutate simulation. Static analysis, regression and whitespace checks passed; no dependencies added. T017 commit: `ae9808e`.
+
+## T032 — original score metric
+
+Added a corrective atomic task for the already-approved original-score requirement before report export. Red: `make build/test_core && ./build/test_core`, exit 1: `world.score == 4`. Green: `make test`, exit 0, verifies a type-1 cooperative kill awards four points exactly once. Score uses original 2/4/8 values and is separate from episode return in native logs. Real-upstream integration, static analysis and whitespace checks passed; dependencies unchanged. T018 commit: `6f51ae2`.

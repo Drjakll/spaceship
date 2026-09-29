@@ -128,6 +128,7 @@ static void resolve_missiles(SpaceWorld *world) {
                 enemy->vy = 50;
                 memset(enemy->contact_cooldown, 0, sizeof(enemy->contact_cooldown));
                 ++world->killed;
+                world->score += 2 << enemy->type;
                 ++world->step_kills;
                 ++world->ships[missile->owner].kills;
                 for (int a = 0; a < world->config.num_agents; ++a) {

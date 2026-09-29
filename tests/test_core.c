@@ -134,6 +134,7 @@ static void test_shared_damage(void) {
     world.projectiles[2] = (SpaceProjectile){1, 2, 500, 503, 0};
     CHECK(space_step(&world, actions));
     CHECK(world.killed == 1 && world.step_kills == 1);
+    CHECK(world.score == 4);
     CHECK(world.enemies[0].health == 0 && world.enemies[0].phase == 2);
     CHECK(world.ships[0].damage == 10 && world.ships[1].damage == 5);
     CHECK(world.ships[0].assists == 1 && world.ships[1].kills == 1);
@@ -142,6 +143,7 @@ static void test_shared_damage(void) {
     CHECK(world.projectiles[2].active);
     CHECK(space_step(&world, actions));
     CHECK(world.killed == 1 && world.ships[1].kills == 1);
+    CHECK(world.score == 4);
     puts("PASS shared damage with single kill and assist attribution");
 }
 

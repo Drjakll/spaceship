@@ -7,7 +7,7 @@ typedef float obs_t;
 #define NUM_ATNS 2
 
 struct Log {
-    float perf, score, killed, escaped, failure_fraction, survivors, episode_length, n;
+    float perf, score, episode_return, killed, escaped, failure_fraction, survivors, episode_length, n;
 };
 struct Env {
     Log log;
@@ -73,7 +73,8 @@ void puf_step(Env *env) {
         float reward = env->world.reward;
         env->log.n += 1;
         env->log.perf += 1 - space_failure_fraction(&env->world);
-        env->log.score += (float)env->world.episode_return;
+        env->log.score += (float)env->world.score;
+        env->log.episode_return += (float)env->world.episode_return;
         env->log.killed += env->world.killed;
         env->log.escaped += env->world.escaped;
         env->log.failure_fraction += space_failure_fraction(&env->world);
@@ -92,6 +93,7 @@ void puf_close(Env *env) { (void)env; }
 void puf_log(Log *log, Dict *out) {
     dict_set(out, "perf", log->perf);
     dict_set(out, "score", log->score);
+    dict_set(out, "episode_return", log->episode_return);
     dict_set(out, "killed", log->killed);
     dict_set(out, "escaped", log->escaped);
     dict_set(out, "failure_fraction", log->failure_fraction);

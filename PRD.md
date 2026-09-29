@@ -156,6 +156,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T016 | P1 | depends: T010 | AC-009 | Implement a seeded random baseline; done when: its fixed-seed evaluation trace reproduces exactly.
 - [x] T017 | P1 | depends: T016 | AC-009 | Implement an independent greedy baseline; done when: its target-selection scenario produces the expected actions.
 - [x] T018 | P1 | depends: T017 | AC-009 | Implement a cooperative lane-coverage baseline; done when: its split-threat scenario demonstrates distinct target coverage.
+- [x] T032 | P1 | depends: T018 | AC-004 | Preserve original score independently of RL return; done when: type-specific kill score and single-award tests pass.
 - [ ] T019 | P1 | depends: T018 | AC-009 | Export fixed-scenario evaluation reports; done when: the baseline report validates against the documented metric schema.
 - [ ] T020 | P1 | depends: T015, T019 | AC-010 | Add checkpoint evaluation through the upstream policy runtime; done when: a valid compatible checkpoint produces a complete evaluation report.
 - [ ] T028 | P1 | depends: T020 | AC-015 | Record reproducible run manifests; done when: the manifest fixture validates source/configuration/checkpoint identities with explicit step units.
@@ -169,7 +170,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 
 T020 may use a temporary initialized compatible policy artifact to test loading when training hardware is unavailable; it must be labeled untrained and cannot satisfy AC-012. Exact checkpoint construction/loading must use the pinned upstream runtime. If that runtime needs unavailable hardware even for the smoke, record the blocker rather than substitute a fabricated success.
 
-AC-012 is an explicitly requested later deliverable with no current execution task because the user chose Mac simulation/CPU evaluation for now. GPU specifications/access and compute limits remain unknown. The 31 tasks above describe the current environment/tooling sprint; completion of this sprint must not be described as completion of the trained-policy objective. AC-013's actual CUDA verification remains deferred even if its CPU checks pass.
+AC-012 is an explicitly requested later deliverable with no current execution task because the user chose Mac simulation/CPU evaluation for now. GPU specifications/access and compute limits remain unknown. The 32 tasks above describe the current environment/tooling sprint; completion of this sprint must not be described as completion of the trained-policy objective. AC-013's actual CUDA verification remains deferred even if its CPU checks pass.
 
 ## 6. Open questions
 
