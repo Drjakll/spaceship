@@ -227,3 +227,57 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
     world->episode_return += world->reward;
     return true;
 }
+
+bool space_observe(const SpaceWorld *world, int agent, float observation[SPACE_OBSERVATION_SIZE]) {
+    if (!world || !observation || agent < 0 || agent >= world->config.num_agents) return false;
+    memset(observation, 0, sizeof(float) * SPACE_OBSERVATION_SIZE);
+    const SpaceShip *self = &world->ships[agent];
+    int deadline = world->config.wave_size * world->config.spawn_interval_ticks + world->config.drain_ticks;
+    observation[0] = self->x / SPACE_WIDTH;
+    observation[1] = self->y / SPACE_HEIGHT;
+    observation[2] = agent / 7.0f;
+    observation[3] = world->config.num_agents / 8.0f;
+    observation[4] = fmaxf(0, 1.0f - (float)world->tick / deadline);
+    observation[5] = (world->config.spawn_interval_ticks - world->tick % world->config.spawn_interval_ticks)
+        / (float)world->config.spawn_interval_ticks;
+    observation[6] = (world->config.wave_size - world->spawned) / (float)world->config.wave_size;
+    observation[7] = world->killed / (float)world->config.wave_size;
+    observation[8] = world->escaped / (float)world->config.wave_size;
+    observation[9] = world->terminal ? 1 : 0;
+    for (int a = 0; a < world->config.num_agents; ++a) {
+        const SpaceShip *ship = &world->ships[a];
+        float *slot = observation + SPACE_SHIP_OFFSET + a * SPACE_SHIP_FEATURES;
+        slot[0] = 1;
+        slot[1] = ship->health > 0;
+        slot[2] = (ship->x - self->x) / SPACE_WIDTH;
+        slot[3] = (ship->y - self->y) / SPACE_HEIGHT;
+        slot[4] = ship->health / 50.0f;
+        slot[5] = ship->cooldown / 30.0f;
+    }
+    for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+        const SpaceEnemy *enemy = &world->enemies[e];
+        if (!enemy->phase) continue;
+        float *slot = observation + SPACE_ENEMY_OFFSET + e * SPACE_ENEMY_FEATURES;
+        slot[0] = 1;
+        slot[1] = enemy->phase == 2;
+        slot[2] = (enemy->x - self->x) / SPACE_WIDTH;
+        slot[3] = (enemy->y - self->y) / 1100.0f;
+        slot[4] = enemy->vx / 150.0f;
+        slot[5] = enemy->vy / 1000.0f;
+        slot[6] = enemy->health / 25.0f;
+        slot[7 + enemy->type] = 1;
+        slot[10] = enemy->explosion_ticks / 120.0f;
+        for (int a = 0; a < world->config.num_agents; ++a) slot[11+a] = enemy->contact_cooldown[a] / 168.0f;
+    }
+    for (int p = 0; p < SPACE_MAX_PROJECTILES; ++p) {
+        const SpaceProjectile *missile = &world->projectiles[p];
+        if (!missile->active) continue;
+        float *slot = observation + SPACE_PROJECTILE_OFFSET + p * SPACE_PROJECTILE_FEATURES;
+        slot[0] = 1;
+        slot[1] = (missile->x - self->x) / SPACE_WIDTH;
+        slot[2] = (missile->y - self->y) / 1100.0f;
+        slot[3] = missile->vy / 1000.0f;
+        slot[4] = missile->owner / 7.0f;
+    }
+    return true;
+}

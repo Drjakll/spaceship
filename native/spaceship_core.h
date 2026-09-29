@@ -9,6 +9,14 @@
 #define SPACE_WIDTH 1000.0f
 #define SPACE_HEIGHT 1000.0f
 #define SPACE_DT (1.0f / 120.0f)
+#define SPACE_CONTEXT_SIZE 10
+#define SPACE_SHIP_FEATURES 6
+#define SPACE_ENEMY_FEATURES (11 + SPACE_MAX_AGENTS)
+#define SPACE_PROJECTILE_FEATURES 5
+#define SPACE_SHIP_OFFSET SPACE_CONTEXT_SIZE
+#define SPACE_ENEMY_OFFSET (SPACE_SHIP_OFFSET + SPACE_MAX_AGENTS * SPACE_SHIP_FEATURES)
+#define SPACE_PROJECTILE_OFFSET (SPACE_ENEMY_OFFSET + SPACE_MAX_ENEMIES * SPACE_ENEMY_FEATURES)
+#define SPACE_OBSERVATION_SIZE (SPACE_PROJECTILE_OFFSET + SPACE_MAX_PROJECTILES * SPACE_PROJECTILE_FEATURES)
 
 typedef struct {
     int num_agents;
@@ -62,4 +70,5 @@ bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed);
 void space_reset(SpaceWorld *world, uint32_t seed);
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]);
 float space_failure_fraction(const SpaceWorld *world);
+bool space_observe(const SpaceWorld *world, int agent, float observation[SPACE_OBSERVATION_SIZE]);
 #endif

@@ -73,3 +73,9 @@ Static analysis and whitespace checks passed; no third-party dependencies added.
 Red: `make test`, exit 2: `FAIL tests/test_core.c:238: fabsf(world.reward - (-2.1f)) < 0.00001f`.
 Green: `make test`, exit 0: `PASS configurable team reward with no event carry-over` and `All core tests passed`.
 Static analysis and whitespace checks passed; no new third-party dependencies. The independently expected simultaneous-event sum is +1 -2 -0.02*5 -1 = -2.1; a following event-free step returns zero. T008 commit: `29d1437`.
+
+## T010 — observation schema
+
+Red: `make test`, exit 2: `"_space_observe", referenced from:` followed by `ld: symbol(s) not found for architecture arm64`.
+Green: `make test`, exit 0: `PASS stable normalized observations with complete zero padding` and `All core tests passed`.
+Static analysis and whitespace checks passed; no new third-party dependencies. Observation size, masks, agent-relative views, padding, normalization, invalid indices, and read purity are checked. T009 commit: `bd56d72`.

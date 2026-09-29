@@ -252,6 +252,34 @@ static void test_rewards(void) {
     puts("PASS configurable team reward with no event carry-over");
 }
 
+static void test_observations(void) {
+    SpaceWorld world, saved;
+    float obs[SPACE_OBSERVATION_SIZE], other[SPACE_OBSERVATION_SIZE];
+    CHECK(SPACE_OBSERVATION_SIZE == 2554);
+    CHECK(space_init(&world, space_default_config(), 73));
+    world.enemies[0] = (SpaceEnemy){.phase=1, .type=1, .x=500, .y=400, .vx=-150, .vy=100, .health=15};
+    world.projectiles[0] = (SpaceProjectile){1, 1, 500, 600, 200};
+    world.ships[1].health = 0;
+    for (int i = 0; i < SPACE_OBSERVATION_SIZE; ++i) obs[i] = 99;
+    saved = world;
+    CHECK(space_observe(&world, 0, obs));
+    CHECK(memcmp(&world, &saved, sizeof(world)) == 0);
+    CHECK(obs[0] == 0.25f && obs[1] == 0.85f);
+    CHECK(obs[SPACE_SHIP_OFFSET + SPACE_SHIP_FEATURES] == 1);
+    CHECK(obs[SPACE_SHIP_OFFSET + SPACE_SHIP_FEATURES + 1] == 0);
+    CHECK(obs[SPACE_ENEMY_OFFSET] == 1 && obs[SPACE_ENEMY_OFFSET + 6] == 0.6f);
+    CHECK(obs[SPACE_ENEMY_OFFSET + 8] == 1);
+    CHECK(obs[SPACE_PROJECTILE_OFFSET] == 1);
+    for (int i = SPACE_SHIP_OFFSET + 3*SPACE_SHIP_FEATURES; i < SPACE_ENEMY_OFFSET; ++i) CHECK(obs[i] == 0);
+    for (int i = SPACE_ENEMY_OFFSET + SPACE_ENEMY_FEATURES; i < SPACE_PROJECTILE_OFFSET; ++i) CHECK(obs[i] == 0);
+    for (int i = SPACE_PROJECTILE_OFFSET + SPACE_PROJECTILE_FEATURES; i < SPACE_OBSERVATION_SIZE; ++i) CHECK(obs[i] == 0);
+    for (int i = 0; i < SPACE_OBSERVATION_SIZE; ++i) CHECK(isfinite(obs[i]) && fabsf(obs[i]) <= 1);
+    CHECK(space_observe(&world, 1, other));
+    CHECK(other[0] == 0.5f && other[2] != obs[2]);
+    CHECK(!space_observe(&world, 3, other));
+    puts("PASS stable normalized observations with complete zero padding");
+}
+
 int main(void) {
     test_reset();
     test_movement();
@@ -262,6 +290,7 @@ int main(void) {
     test_escapes();
     test_episodes();
     test_rewards();
+    test_observations();
     puts("All core tests passed");
     return 0;
 }
