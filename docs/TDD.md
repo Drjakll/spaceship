@@ -37,3 +37,9 @@ Green: `make test`, exit 0: `PASS simultaneous bounded movement for 1-8 ships` a
 Red: `make test`, exit 2: `FAIL tests/test_core.c:74: world.projectiles[0].active && world.projectiles[0].owner == 0`.
 Green: `make test`, exit 0: `PASS independent firing cooldowns and projectile ownership` and `All core tests passed`.
 `make analyze` and `git diff --check` passed; dependency review found no new third-party dependencies. T002 commit: `dbb8beb`.
+
+## T004 — seeded waves
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:106: a.spawned == 1 && a.enemies[0].phase == 1`.
+Green: `make test`, exit 0: `PASS deterministic enemy wave schedule and bounded paths` and `All core tests passed`.
+`make analyze` and whitespace checks passed; dependency review found no new external code. T003 commit: `4f56aad`.

@@ -93,10 +93,38 @@ static void test_firing(void) {
     puts("PASS independent firing cooldowns and projectile ownership");
 }
 
+static void test_waves(void) {
+    SpaceWorld a, b;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&a, config, 73));
+    CHECK(space_init(&b, config, 73));
+    for (int i = 0; i < 107; ++i) CHECK(space_step(&a, actions));
+    CHECK(a.spawned == 0);
+    CHECK(space_step(&a, actions));
+    CHECK(a.spawned == 1 && a.enemies[0].phase == 1);
+    CHECK(a.enemies[0].type >= 0 && a.enemies[0].type < 3);
+    CHECK(a.enemies[0].x >= 25 && a.enemies[0].x <= 975);
+    for (int i = 0; i < 108; ++i) CHECK(space_step(&b, actions));
+    CHECK(memcmp(&a, &b, sizeof(a)) == 0);
+    float y = a.enemies[0].y;
+    CHECK(space_step(&a, actions));
+    CHECK(a.enemies[0].y > y);
+    a.enemies[0].x = 974.9f;
+    a.enemies[0].vx = 150;
+    CHECK(space_step(&a, actions));
+    CHECK(a.enemies[0].x <= 975 && a.enemies[0].vx < 0);
+    for (int i = 110; i < 324; ++i) CHECK(space_step(&a, actions));
+    CHECK(a.spawned == 3);
+    puts("PASS deterministic enemy wave schedule and bounded paths");
+}
+
 int main(void) {
     test_reset();
     test_movement();
     test_firing();
+    test_waves();
     puts("All core tests passed");
     return 0;
 }

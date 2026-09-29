@@ -52,6 +52,49 @@ static bool fire_missile(SpaceWorld *world, int owner) {
     return false;
 }
 
+static uint32_t space_random(SpaceWorld *world) {
+    uint32_t value = world->rng;
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    world->rng = value;
+    return value;
+}
+
+static bool spawn_enemy(SpaceWorld *world) {
+    static const float health[3] = {10, 15, 25};
+    static const float speed[3] = {100, 150, 100};
+    for (int i = 0; i < SPACE_MAX_ENEMIES; ++i) {
+        SpaceEnemy *enemy = &world->enemies[i];
+        if (enemy->phase) continue;
+        memset(enemy, 0, sizeof(*enemy));
+        enemy->phase = 1;
+        enemy->type = (int)(space_random(world) % 3);
+        enemy->id = ++world->spawned;
+        enemy->x = 25.0f + (float)(space_random(world) % 951);
+        enemy->y = -25;
+        enemy->vx = speed[enemy->type];
+        enemy->vy = 10;
+        enemy->health = health[enemy->type];
+        return true;
+    }
+    world->overflow = 1;
+    return false;
+}
+
+static void move_enemies(SpaceWorld *world) {
+    static const float acceleration[3] = {75, 50, 20};
+    for (int i = 0; i < SPACE_MAX_ENEMIES; ++i) {
+        SpaceEnemy *enemy = &world->enemies[i];
+        if (enemy->phase != 1) continue;
+        enemy->vy += acceleration[enemy->type] * SPACE_DT;
+        enemy->y += enemy->vy * SPACE_DT;
+        enemy->x += enemy->vx * SPACE_DT;
+        if (enemy->x > 975) { enemy->x = 1950 - enemy->x; enemy->vx = -fabsf(enemy->vx); }
+        if (enemy->x < 25) { enemy->x = 50 - enemy->x; enemy->vx = fabsf(enemy->vx); }
+    }
+}
+
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
     if (!world || !actions || world->terminal) return false;
     for (int i = 0; i < world->config.num_agents; ++i) {
@@ -79,6 +122,9 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
             if (missile->y < -10) missile->active = 0;
         }
         ++world->tick;
+        if (world->spawned < world->config.wave_size &&
+            world->tick % world->config.spawn_interval_ticks == 0 && !spawn_enemy(world)) return false;
+        move_enemies(world);
     }
     return true;
 }
