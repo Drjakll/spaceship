@@ -163,7 +163,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T029 | P1 | depends: T028 | AC-015 | Select checkpoints using development scenarios; done when: the ranking fixture retains the expected checkpoint without reading held-out results.
 - [x] T030 | P1 | depends: T029 | AC-013 | Package a bounded GPU correctness diagnostic; done when: the local diagnostic-plan fixture requires complete target cases before enabling a later training command.
 - [x] T031 | P1 | depends: T028 | AC-015 | Parse per-update PPO diagnostics; done when: recorded-log fixtures produce the expected update/optimizer counters with preserved native metrics.
-- [ ] T021 | P1 | depends: T018 | AC-008 | Render the shared simulation with existing sprites; done when: the multi-ship viewer passes visual inspection with matching simulation counters.
+- [x] T021 | P1 | depends: T018 | AC-008 | Render the shared simulation with existing sprites; done when: the multi-ship viewer passes visual inspection with matching simulation counters.
 - [ ] T022 | P1 | depends: T021 | AC-008 | Add manual control with scripted allies; done when: a keyboard smoke demonstrates movement plus cooldown-limited firing alongside allied ships.
 - [ ] T023 | P1 | depends: T022, T030, T031 | AC-010 | Document reproducible setup through evaluation; done when: the documented local quick-start completes on available hardware.
 - [ ] T024 | P1 | depends: T023 | AC-011 | Produce the evidence-based sprint walkthrough; done when: `WALKTHROUGH.md` maps all criteria to fresh full-suite, scan, dependency-review, or explicit limitation evidence.

@@ -28,6 +28,7 @@ static Weights *checked_weights(const char *path) {
     }
     return weights;
 }
+#ifndef SPACE_POLICY_LIBRARY
 int main(int argc, char **argv) {
     if(argc==4 && !strcmp(argv[1],"--init-untrained")) {
         uint32_t rng=(uint32_t)space_parse_int(argv[3],1,INT_MAX);
@@ -61,3 +62,4 @@ int main(int argc, char **argv) {
     free_puffernet(policy.net);free(policy.weights);
     return 0;
 }
+#endif
