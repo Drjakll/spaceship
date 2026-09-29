@@ -149,7 +149,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T012 | P1 | depends: T011 | AC-006 | Establish the pinned PufferLib 5.0 dependency build; done when: the real upstream CPU smoke builds at the recorded revision.
 - [x] T013 | P1 | depends: T012 | AC-006 | Implement native environment buffer integration; done when: a real-upstream harness steps two isolated arenas through the declared interface.
 - [x] T014 | P1 | depends: T013 | AC-007 | Implement native team episode boundaries; done when: the lifecycle fixture verifies terminal metrics plus reset observations across consecutive episodes.
-- [ ] T025 | P1 | depends: T014 | AC-014 | Preserve reward magnitudes in learner transport; done when: the raw-to-target fixture retains the configured kill/escape ratio for interior plus boundary transitions.
+- [x] T025 | P1 | depends: T014 | AC-014 | Preserve reward magnitudes in learner transport; done when: the raw-to-target fixture retains the configured kill/escape ratio for interior plus boundary transitions.
 - [ ] T026 | P1 | depends: T025 | AC-013 | Implement complete rollout target calculations; done when: independent expected-return fixtures pass before/on/after rollout boundaries for allied team slots.
 - [ ] T027 | P1 | depends: T026 | AC-013 | Prepare the cooperative native collector patch; done when: source-provenance checks plus the local collector contract suite validate all-ally routing with side-effect-free bootstrap inputs.
 - [ ] T015 | P1 | depends: T027 | AC-010 | Supply bounded shared-policy PPO configuration; done when: native configuration validation accepts every supported team size with a finite step budget.

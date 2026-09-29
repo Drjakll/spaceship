@@ -108,3 +108,7 @@ Green: `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceshi
 ## T014 — team boundaries
 
 Red: `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceship-deps/pufferlib-6ffa5b1`, exit 1: `first.boundary_reached == 1`. Green: same command, exit 0: `PASS dead slots and consecutive team boundaries preserve rewards and reset observations`. The test covers an individual inactive slot, two automatic resets, final -2 rewards/terminal flags with initial-state observations, next-step flag clearing, and exact-once logs. Core/Python regression tests, static analysis and whitespace checks passed; dependencies unchanged. T013 commit: `c1f7d86`.
+
+## T025 — lossless reward transport
+
+The public helper first reproduced the inspected upstream [-1,1] transport clamp. Red: `clang -std=c11 -Wall -Wextra -Werror -pedantic -Inative tests/test_ppo.c -lm -o build/test_ppo && ./build/test_ppo`, exit 1: `space_learner_reward(-2) / space_learner_reward(1) == -2`. Green: `make test`, exit 0: `PASS lossless reward transport retains simultaneous events and escape ratio`. Identity scaling preserves raw reward ratios; T027 wires this host/device helper into interior and tail collection. Static/whitespace checks passed, no dependencies added. T014 commit: `6c8fd5e`.
