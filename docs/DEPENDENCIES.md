@@ -1,0 +1,19 @@
+# External dependencies
+
+PufferLib source, archives, binaries, and third-party libraries remain outside this repository. `pufferlib-lock.json` contains identities and hashes only. The initial source is PufferLib's 5.0 revision `6ffa5b10dbbbe4d1e8288367c7d9d3acd3bad4a2`, matching the reference project's pinned revision. Its external `LICENSE` is MIT. Spaceship setup verifies the archive SHA-256 and native source files; it never installs system packages.
+
+Prepare an external directory, or verify a pre-existing checkout of the same unmodified native source:
+
+```sh
+python3 scripts/prepare_pufferlib.py --destination /absolute/external/path/pufferlib-5.0
+python3 scripts/prepare_pufferlib.py --verify /absolute/external/path/pufferlib-5.0
+python3 scripts/check_external.py --pufferlib-root /absolute/external/path/pufferlib-5.0
+```
+
+`--archive /path/to/pinned.tar.gz` reuses an existing archive. Existing preparation destinations are never overwritten. Destinations inside the Spaceship repository are rejected, including resolved symlink paths. The CPU smoke compiles and executes the actual external `src/puffercpu.c` implementation; it is separate from the dependency-free core suite.
+
+Development used `/private/tmp/spaceship-deps/pufferlib-6ffa5b1`. This temporary cache can be recreated with the setup command. No change was made to `~/Developer/puffer-selfplay-modal` or its generated backend.
+
+Dependency review, 2026-09-28: pinned archive/source integrity and MIT license were checked. A web search for PufferLib advisories did not identify a matching advisory; fetching GitHub's repository advisory page failed, so a comprehensive vulnerability scan is unavailable and no vulnerability-free claim is made. Native dependencies are not audited by a Python package scanner. Python tooling currently uses only the standard library.
+
+[Upstream issue/PR 691](https://github.com/PufferAI/PufferLib/pull/691) reports a Muon parameter-alignment problem for some layouts. Its relevance to the selected Spaceship model shape must be checked before the later GPU run, together with rollout-boundary and reward-transport diagnostics. The report's results belong to its author; they are not Spaceship CUDA verification. Local CPU checks do not establish optimizer correctness or successful GPU training.

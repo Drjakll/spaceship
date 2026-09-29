@@ -92,3 +92,10 @@ All core tests passed
 ```
 
 `make analyze` and whitespace checks passed. Tested overflowing deadline configuration, invalid frame skip, finite reward constraints, full missile/enemy arrays, paired seeded traces, bounded observations, and terminal accounting. ASan/UBSan reported no errors. No third-party dependency yet. T010 commit: `fc011a5`.
+
+## T012 — external pinned PufferLib
+
+The first missing-module import was test setup. Red after the public stub existed: `python3 -m unittest discover -s tests -p 'test_setup.py'`, exit 1, `NotImplementedError: External dependency preparation is not implemented` in all three behavior checks.
+Green: the same command ran `Ran 3 tests in 0.001s` / `OK`, rejecting internal destinations, corrupt archives, and unverified existing folders.
+The verified archive was prepared at `/private/tmp/spaceship-deps/pufferlib-6ffa5b1`. `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceship-deps/pufferlib-6ffa5b1`, exit 0: `PASS real pinned PufferLib CPU inference smoke`. No upstream source is tracked here.
+`make test` passed core plus three Python tests; static analysis and whitespace checks passed. Python syntax compilation passed with `PYTHONPYCACHEPREFIX=build/pycache`; the first attempt hit macOS's external cache permission and was rerun with a local build cache. Dependency-review limits are in `docs/DEPENDENCIES.md`; no CUDA run occurred. T011 commit: `0dee378`.

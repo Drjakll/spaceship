@@ -9,6 +9,7 @@ build/test_core: tests/test_core.c native/spaceship_core.c native/spaceship_core
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_core.c native/spaceship_core.c $(LDLIBS) -o $@
 test: build/test_core
 	./build/test_core
+	python3 -m unittest discover -s tests -p 'test_*.py'
 sanitize:
 	mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_core.c native/spaceship_core.c $(LDLIBS) -o build/test_sanitize
