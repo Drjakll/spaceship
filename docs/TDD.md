@@ -99,3 +99,8 @@ The first missing-module import was test setup. Red after the public stub existe
 Green: the same command ran `Ran 3 tests in 0.001s` / `OK`, rejecting internal destinations, corrupt archives, and unverified existing folders.
 The verified archive was prepared at `/private/tmp/spaceship-deps/pufferlib-6ffa5b1`. `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceship-deps/pufferlib-6ffa5b1`, exit 0: `PASS real pinned PufferLib CPU inference smoke`. No upstream source is tracked here.
 `make test` passed core plus three Python tests; static analysis and whitespace checks passed. Python syntax compilation passed with `PYTHONPYCACHEPREFIX=build/pycache`; the first attempt hit macOS's external cache permission and was rerun with a local build cache. Dependency-review limits are in `docs/DEPENDENCIES.md`; no CUDA run occurred. T011 commit: `0dee378`.
+
+## T013 — native allied buffers
+
+The first undeclared `dict_free` error was test setup, corrected to upstream `dict_clear`. Red: `clang -std=c11 -O2 -Inative -Itests/stubs -I/private/tmp/spaceship-deps/pufferlib-6ffa5b1/src tests/test_adapter.c native/spaceship_core.c -lm -o build/test_adapter`, exit 1: `Undefined symbols for architecture arm64:` including `_puf_init`, `_puf_reset`, `_puf_step`, `_puf_close`.
+Green: `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceship-deps/pufferlib-6ffa5b1`, exit 0: `PASS real PufferLib buffers route all allies across isolated worlds`. Real upstream Agent/Dict/environment types are used; only the unused graphics header is stubbed for the headless harness. `make test`, `make analyze`, and `git diff --check` passed. Dependencies unchanged from T012 (`803e1b2`).

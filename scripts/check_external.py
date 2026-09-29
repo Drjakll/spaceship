@@ -17,6 +17,12 @@ def main():
                     '-DPUFFERCPU_SOURCE="' + str(root / "src/puffercpu.c") + '"',
                     str(PROJECT / "tests/test_puffercpu.c"), "-lm", "-o", str(target)], check=True)
     subprocess.run([str(target)], check=True)
+    target = build / "test_adapter"
+    subprocess.run([args.cc, "-std=c11", "-O2", "-I" + str(PROJECT / "native"),
+                    "-I" + str(PROJECT / "tests/stubs"), "-I" + str(root / "src"),
+                    str(PROJECT / "tests/test_adapter.c"), str(PROJECT / "native/spaceship_core.c"),
+                    "-lm", "-o", str(target)], check=True)
+    subprocess.run([str(target)], check=True)
 
 
 if __name__ == "__main__":

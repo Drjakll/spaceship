@@ -42,7 +42,7 @@ The user wants an eventual trained checkpoint and demonstration, but explicitly 
 
 Later experiments may include reward tuning or extended model-quality work within an agreed compute budget.
 
-Phase 2 will introduce learned enemy policies and competitive self-play, as requested by the user, after the cooperative baseline is implemented and evaluated; its enemy action/observation/reward contracts and training schedule require a separate scoped backlog. Phase 1 uses scripted enemies. Network multiplayer, pixel observations, a Python/Gym compatibility layer, learned communication messages, a novel training algorithm, and GPU simulation kernels remain outside this build.
+The user explicitly reiterated: "for now don't do the self play step. just multi agent rl (MARL) step." Current work is cooperative PPO/MARL with scripted enemies only. Learned enemy policies, competitive self-play, and opponent pools are deferred and will require a separate request and scoped backlog. Network multiplayer, pixel observations, a Python/Gym compatibility layer, learned communication messages, a novel training algorithm, and GPU simulation kernels remain outside this build.
 
 ## 3. Requirements and constraints
 
@@ -147,7 +147,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T010 | P0 | depends: T009 | AC-005 | Encode fixed-size per-agent observations; done when: the schema fixture validates normalized values plus inactive-slot padding.
 - [x] T011 | P0 | depends: T010 | AC-001 | Enforce bounded simulation storage; done when: the capacity/replay stress suite passes under supported sanitizers.
 - [x] T012 | P1 | depends: T011 | AC-006 | Establish the pinned PufferLib 5.0 dependency build; done when: the real upstream CPU smoke builds at the recorded revision.
-- [ ] T013 | P1 | depends: T012 | AC-006 | Implement native environment buffer integration; done when: a real-upstream harness steps two isolated arenas through the declared interface.
+- [x] T013 | P1 | depends: T012 | AC-006 | Implement native environment buffer integration; done when: a real-upstream harness steps two isolated arenas through the declared interface.
 - [ ] T014 | P1 | depends: T013 | AC-007 | Implement native team episode boundaries; done when: the lifecycle fixture verifies terminal metrics plus reset observations across consecutive episodes.
 - [ ] T025 | P1 | depends: T014 | AC-014 | Preserve reward magnitudes in learner transport; done when: the raw-to-target fixture retains the configured kill/escape ratio for interior plus boundary transitions.
 - [ ] T026 | P1 | depends: T025 | AC-013 | Implement complete rollout target calculations; done when: independent expected-return fixtures pass before/on/after rollout boundaries for allied team slots.
