@@ -48,10 +48,12 @@ if __name__=='__main__':
     parser.add_argument('--binary',type=pathlib.Path)
     parser.add_argument('--checkpoint',type=pathlib.Path)
     parser.add_argument('--checkpoint-kind',choices=['unknown','untrained','trained'],default='unknown')
+    parser.add_argument('--checkpoint-update',type=int,default=0)
     parser.add_argument('--output',type=pathlib.Path,required=True)
     args=parser.parse_args()
     if (args.policy=='checkpoint') != bool(args.checkpoint): parser.error('Checkpoint policy requires --checkpoint')
     result=report(args.policy,args.ships,args.split,args.binary,args.checkpoint,checkpoint_kind=args.checkpoint_kind)
+    result['checkpoint_update']=args.checkpoint_update
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps({'output':str(args.output),'aggregate':result['aggregate'],'targets':result['targets']},indent=2))

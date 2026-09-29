@@ -159,3 +159,7 @@ T020 full development run completed: `python3 scripts/evaluate.py --policy check
 ## T028 — reproducible run manifests
 
 Red: `python3 -m unittest discover -s tests -p test_manifest.py`, exit 1: `NotImplementedError: Run manifest is not implemented`. Green: `make test`, exit 0, nine Python checks plus C suites. Manifest checks cover source/configuration/checkpoint hashes, changed configuration identity, unknown versus measured counters, negative counters and checkpoint labels. Evaluation reports now include manifests; standalone manifest generation was run for the untrained artifact. Static/whitespace checks passed; dependencies unchanged. T020 commit: `e22d44f`.
+
+## T029 — development-only checkpoint selection
+
+Red: `python3 -m unittest discover -s tests -p test_selection.py`, exit 1: `NotImplementedError: Development-only checkpoint selection is not implemented`. Green: `make test`, exit 0, eleven Python checks and C suites. Ranking minimizes defensive failures, then maximizes survivors, then chooses earliest update; an incumbent wins exact ties. Held-out scenarios, mixed rule fingerprints and untrained artifacts are rejected. Content-addressed archives verify bytes against the evaluated hash; latest and selected labels are separate. Static/whitespace checks passed; no actual trained policy has been selected. T028 commit: `7c4d938`.
