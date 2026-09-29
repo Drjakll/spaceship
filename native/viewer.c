@@ -3,6 +3,7 @@
 #include "spaceship_eval.h"
 #include "spaceship_input.h"
 #include <string.h>
+#include <math.h>
 #ifdef PUFFERCPU_SOURCE
 #define SPACE_POLICY_LIBRARY
 #include "checkpoint.c"
@@ -27,8 +28,6 @@ int main(int argc,char **argv) {
     }
     if(strcmp(policy,"lanes") && strcmp(policy,"greedy") && strcmp(policy,"random")) return 2;
     if(manual>=config.num_agents || (manual>=0 && checkpoint)) {fputs("Manual mode requires a living team slot and scripted allies\n",stderr);return 2;}
-    FILE *trace=trace_path?fopen(trace_path,"wx"):NULL;
-    if(trace_path && !trace) {perror("Create trace");return 2;}
 #ifdef PUFFERCPU_SOURCE
     SpacePolicy neural={0};
     if(checkpoint) {int sizes[]={9,2};neural.weights=checked_weights(checkpoint);
@@ -39,6 +38,9 @@ int main(int argc,char **argv) {
     SpaceWorld world;if(!space_init(&world,config,seed)) return 2;
     for(int i=0;i<warmup && !world.terminal;++i) {SpaceAction actions[8];space_lane_actions(&world,actions);if(!space_step(&world,actions)) return 2;}
     SpaceView view={0};if(!space_view_open(&view)) return 2;
+    int result=0;
+    FILE *trace=trace_path?fopen(trace_path,"wx"):NULL;
+    if(trace_path && !trace) {perror("Create trace");result=2;goto finish;}
     bool paused=false;double accumulated=0;int frame=0;
     while(!WindowShouldClose() && (!frames || frame<frames)) {
         if(IsKeyPressed(KEY_P)) paused=!paused;
@@ -58,7 +60,7 @@ int main(int argc,char **argv) {
             if(manual>=0) actions[manual]=space_manual_action(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP),
                 IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN),IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT),
                 IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT),IsKeyDown(KEY_SPACE));
-            if(!space_step(&world,actions)) return 2;
+            if(!space_step(&world,actions)) {result=2;goto finish;}
             if(trace && manual>=0) {
                 int shots[8]={0};for(int p=0;p<SPACE_MAX_PROJECTILES;++p) if(world.projectiles[p].active) ++shots[world.projectiles[p].owner];
                 fprintf(trace,"{\"tick\":%d,\"move\":%d,\"fire\":%d,\"x\":%.3f,\"y\":%.3f,\"manual_shots\":%d,\"ally_shots\":%d}\n",
@@ -72,10 +74,11 @@ int main(int argc,char **argv) {
         if(manual>=0) label="MANUAL + SCRIPTED ALLIES";
         space_view_draw(&view,&world,label,paused);++frame;
     }
+finish:
     space_view_close(&view);
     if(trace) fclose(trace);
 #ifdef PUFFERCPU_SOURCE
     if(neural.net) {free_puffernet(neural.net);free(neural.weights);}
 #endif
-    return 0;
+    return result;
 }
