@@ -164,6 +164,24 @@ static void resolve_escapes(SpaceWorld *world) {
     }
 }
 
+static void finish_episode(SpaceWorld *world) {
+    int alive = 0;
+    for (int a = 0; a < world->config.num_agents; ++a) alive += world->ships[a].health > 0;
+    int deadline = world->config.wave_size * world->config.spawn_interval_ticks + world->config.drain_ticks;
+    if (!alive) world->terminal_reason = SPACE_DEFEAT;
+    else if (world->killed + world->escaped == world->config.wave_size) world->terminal_reason = SPACE_WAVE_COMPLETE;
+    else if (world->tick >= deadline) world->terminal_reason = SPACE_DEADLINE;
+    if (world->terminal_reason) {
+        world->terminal = 1;
+        world->unresolved = world->spawned - world->killed - world->escaped;
+        world->unspawned = world->config.wave_size - world->spawned;
+    }
+}
+
+float space_failure_fraction(const SpaceWorld *world) {
+    return 1.0f - (float)world->killed / (float)world->config.wave_size;
+}
+
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
     if (!world || !actions || world->terminal) return false;
     for (int i = 0; i < world->config.num_agents; ++i) {
@@ -197,6 +215,8 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
         resolve_missiles(world);
         resolve_hazards(world);
         resolve_escapes(world);
+        finish_episode(world);
+        if (world->terminal) break;
     }
     return true;
 }

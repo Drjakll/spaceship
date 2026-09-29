@@ -42,6 +42,7 @@ typedef struct {
 typedef struct { int move, fire; } SpaceAction;
 enum { SPACE_STAY, SPACE_UP, SPACE_DOWN, SPACE_LEFT, SPACE_RIGHT,
        SPACE_UP_LEFT, SPACE_UP_RIGHT, SPACE_DOWN_LEFT, SPACE_DOWN_RIGHT };
+enum { SPACE_RUNNING, SPACE_DEFEAT, SPACE_WAVE_COMPLETE, SPACE_DEADLINE, SPACE_ERROR };
 
 typedef struct {
     SpaceConfig config;
@@ -60,4 +61,5 @@ SpaceConfig space_default_config(void);
 bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed);
 void space_reset(SpaceWorld *world, uint32_t seed);
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]);
+float space_failure_fraction(const SpaceWorld *world);
 #endif

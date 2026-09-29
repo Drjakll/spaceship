@@ -189,6 +189,39 @@ static void test_escapes(void) {
     puts("PASS exact-once live enemy escape accounting");
 }
 
+static void test_episodes(void) {
+    SpaceWorld world, saved;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    config.wave_size = 3;
+    config.drain_ticks = 20;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 2;
+    world.killed = 1;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .x=250, .y=100, .health=10};
+    for (int a = 0; a < 3; ++a) world.ships[a].health = 0;
+    CHECK(space_step(&world, actions));
+    CHECK(world.terminal && world.terminal_reason == SPACE_DEFEAT);
+    CHECK(world.unresolved == 1 && world.unspawned == 1);
+    CHECK(fabsf(space_failure_fraction(&world) - 2.0f/3) < 0.00001f);
+    saved = world;
+    CHECK(!space_step(&world, actions));
+    CHECK(memcmp(&world, &saved, sizeof(world)) == 0);
+    space_reset(&world, 73);
+    world.spawned = 3; world.killed = 2; world.escaped = 1;
+    CHECK(space_step(&world, actions));
+    CHECK(world.terminal_reason == SPACE_WAVE_COMPLETE);
+    CHECK(world.unresolved == 0 && world.unspawned == 0);
+    space_reset(&world, 73);
+    world.tick = 343; world.spawned = 3; world.killed = 1; world.escaped = 1;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .x=250, .y=100, .health=10};
+    CHECK(space_step(&world, actions));
+    CHECK(world.terminal_reason == SPACE_DEADLINE);
+    CHECK(world.killed + world.escaped + world.unresolved + world.unspawned == 3);
+    puts("PASS episode termination with conserved enemy obligations");
+}
+
 int main(void) {
     test_reset();
     test_movement();
@@ -197,6 +230,7 @@ int main(void) {
     test_shared_damage();
     test_hazards();
     test_escapes();
+    test_episodes();
     puts("All core tests passed");
     return 0;
 }

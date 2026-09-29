@@ -61,3 +61,9 @@ Static analysis and whitespace checks passed; no new third-party dependencies. T
 Red: `make test`, exit 2: `FAIL tests/test_core.c:185: world.escaped == 1 && world.step_escapes == 1`.
 Green: `make test`, exit 0: `PASS exact-once live enemy escape accounting` and `All core tests passed`.
 Static analysis and whitespace checks passed; no new external dependencies. An escape occurs when a live enemy fully crosses the bottom (center y > 1025); explosions never count. T006 commit: `6de825e`.
+
+## T008 — finite waves and endings
+
+Red: `make test`, exit 2: `"_space_failure_fraction", referenced from:` followed by `ld: symbol(s) not found for architecture arm64`.
+Green: `make test`, exit 0: `PASS episode termination with conserved enemy obligations` and `All core tests passed`.
+Static analysis and whitespace checks passed; no third-party dependencies added. Tests cover team defeat, complete waves, deadlines, terminal-state immutability, and scheduled-enemy conservation. T007 commit: `f3be98b`.
