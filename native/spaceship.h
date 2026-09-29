@@ -2,6 +2,7 @@
 typedef float obs_t;
 #include "pufferenv.h"
 #include "spaceship_core.h"
+#include "spaceship_fixture.h"
 #define OBS_SIZE SPACE_OBSERVATION_SIZE
 #define ACT_SIZES {9, 2}
 #define NUM_ATNS 2
@@ -12,7 +13,7 @@ struct Log {
 struct Env {
     Log log;
     Agent agents[SPACE_MAX_AGENTS];
-    int num_agents, tag, boundary_reached;
+    int num_agents, tag, boundary_reached, diagnostic_period, diagnostic_step;
     unsigned int rng;
     SpaceWorld world;
     void *client;
@@ -42,6 +43,8 @@ void puf_init(Env *env, Dict *kwargs) {
     c.spawn_interval_ticks = space_int_option(kwargs, "spawn_interval_ticks", c.spawn_interval_ticks);
     c.drain_ticks = space_int_option(kwargs, "drain_ticks", c.drain_ticks);
     c.frame_skip = space_int_option(kwargs, "frame_skip", c.frame_skip);
+    env->diagnostic_period = space_int_option(kwargs,"diagnostic_period",0);
+    if(env->diagnostic_period) {c.frame_skip=1; c.spawn_interval_ticks=1000000;}
     c.reward_kill = (float)space_option(kwargs, "reward_kill", c.reward_kill);
     c.reward_escape = (float)space_option(kwargs, "reward_escape", c.reward_escape);
     c.reward_damage = (float)space_option(kwargs, "reward_damage", c.reward_damage);
@@ -58,6 +61,7 @@ void puf_reset(Env *env) {
 }
 void puf_step(Env *env) {
     env->boundary_reached = 0;
+    if(env->diagnostic_period) space_diagnostic_fixture(&env->world,++env->diagnostic_step,env->diagnostic_period);
     SpaceAction actions[SPACE_MAX_AGENTS] = {0};
     for (int a = 0; a < env->num_agents; ++a) {
         float move = env->agents[a].actions[0], fire = env->agents[a].actions[1];

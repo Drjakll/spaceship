@@ -161,7 +161,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T020 | P1 | depends: T015, T019 | AC-010 | Add checkpoint evaluation through the upstream policy runtime; done when: a valid compatible checkpoint produces a complete evaluation report.
 - [x] T028 | P1 | depends: T020 | AC-015 | Record reproducible run manifests; done when: the manifest fixture validates source/configuration/checkpoint identities with explicit step units.
 - [x] T029 | P1 | depends: T028 | AC-015 | Select checkpoints using development scenarios; done when: the ranking fixture retains the expected checkpoint without reading held-out results.
-- [ ] T030 | P1 | depends: T029 | AC-013 | Package a bounded GPU correctness diagnostic; done when: the local diagnostic-plan fixture requires complete target cases before enabling a later training command.
+- [x] T030 | P1 | depends: T029 | AC-013 | Package a bounded GPU correctness diagnostic; done when: the local diagnostic-plan fixture requires complete target cases before enabling a later training command.
 - [ ] T031 | P1 | depends: T028 | AC-015 | Parse per-update PPO diagnostics; done when: recorded-log fixtures produce the expected update/optimizer counters with preserved native metrics.
 - [ ] T021 | P1 | depends: T018 | AC-008 | Render the shared simulation with existing sprites; done when: the multi-ship viewer passes visual inspection with matching simulation counters.
 - [ ] T022 | P1 | depends: T021 | AC-008 | Add manual control with scripted allies; done when: a keyboard smoke demonstrates movement plus cooldown-limited firing alongside allied ships.

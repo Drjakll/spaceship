@@ -72,5 +72,25 @@ int main(void) {
     dict_clear(&kwargs);
     puts("PASS real PufferLib buffers route all allies across isolated worlds");
     puts("PASS dead slots and consecutive team boundaries preserve rewards and reset observations");
+    int periods[]={1,63,64,65};
+    for(int ships=1;ships<=8;++ships) for(int p=0;p<4;++p) {
+        Env env={0}; Buffers buffers; Dict options={0};
+        dict_set(&options,"num_agents",ships);dict_set(&options,"diagnostic_period",periods[p]);
+        puf_init(&env,&options);bind(&env,&buffers);puf_reset(&env);
+        int first_alive=1;
+        for(int step=1;step<=192;++step) {
+            float expected=(step%67==63?1.f:0.f)-(step%67==64?2.f:0.f);
+            int terminal=step%periods[p]==0;
+            if(terminal) {expected-=1.02f*(ships-(first_alive?0:1));first_alive=1;}
+            else if(step%67==65 && ships>1 && first_alive) {expected-=1.02f;first_alive=0;}
+            puf_step(&env);
+            for(int a=0;a<ships;++a) {
+                CHECK(fabsf(buffers.rewards[a]-expected)<1e-5f);
+                CHECK(buffers.terminals[a]==terminal);
+            }
+        }
+        puf_close(&env);dict_clear(&options);
+    }
+    puts("PASS GPU diagnostic event fixtures locally for 32 team/boundary combinations");
     return 0;
 }

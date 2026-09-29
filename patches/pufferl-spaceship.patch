@@ -2,7 +2,31 @@
 +++ b/src/pufferl.cu
 @@ -539,0 +540 @@
 +    Prec space_bootstrap_obs, space_bootstrap_state, space_bootstrap_values;
-@@ -1459,0 +1461,26 @@
+@@ -591,0 +593,20 @@
++static int space_check_actions = 0;
++__global__ void space_check_sample(Prec decoder, const float* actions, const float* executed,
++        const precision_t* logprobs, const precision_t* values) {
++    int row=blockIdx.x*blockDim.x+threadIdx.x;
++    if(row>=decoder.shape[0]) return;
++    assert(decoder.shape[1]==12);
++    assert(to_float(values[row])==to_float(decoder.data[row*12+11]));
++    float expected=0; int sizes[]={9,2},offset=0;
++    for(int head=0;head<2;++head) {
++        float raw=actions[row*2+head]; int action=(int)raw;
++        assert(raw==action && action>=0 && action<sizes[head] && raw==executed[row*2+head]);
++        float high=-INFINITY,sum=0;
++        for(int j=0;j<sizes[head];++j) high=fmaxf(high,to_float(decoder.data[row*12+offset+j]));
++        for(int j=0;j<sizes[head];++j) sum+=expf(to_float(decoder.data[row*12+offset+j])-high);
++        expected+=to_float(decoder.data[row*12+offset+action])-high-logf(sum);
++        offset+=sizes[head];
++    }
++    assert(isfinite(to_float(logprobs[row])) && fabsf(to_float(logprobs[row])-expected)<.0002f);
++}
++
+@@ -876,0 +898,2 @@
++        if(space_check_actions) space_check_sample<<<grid_size(n),BLOCK_SIZE,0,stream>>>(
++            dec,act_b.data,env->actions.data+(long)sub*act_cols,lp_b.data,val_b.data);
+@@ -1459,0 +1483,26 @@
 +// Spaceship reads the next value using a private copy of recurrent memory.
 +__global__ void space_extract_value(const precision_t* dec, precision_t* values, int rows, int columns) {
 +    int row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -29,14 +53,14 @@
 +}
 +// End Spaceship bootstrap
 +
-@@ -1465,0 +1493 @@
+@@ -1465,0 +1515 @@
 +    space_prepare_bootstrap(pufferl, stream);
-@@ -1487,3 +1515 @@
+@@ -1487,3 +1537 @@
 -    clamp_precision_kernel<<<grid_size(
 -        numel(rollouts->rewards.shape)), BLOCK_SIZE, 0, stream>>>(
 -        rollouts->rewards.data, -1.0f, 1.0f, numel(rollouts->rewards.shape));
 +    // Spaceship preserves raw team reward magnitudes (identity scaling).
-@@ -1532,4 +1558,5 @@
+@@ -1532,4 +1580,5 @@
 -        puff_advantage<<<adv_grid, ADV_THREADS, 0, stream>>>(
 -            graph.mb_gae_v.data, graph.mb_rewards.data,
 -            graph.mb_terminals.data,
@@ -46,11 +70,11 @@
 +            pufferl->env.rewards.data + dest_off,
 +            pufferl->env.terminals.data + dest_off,
 +            pufferl->space_bootstrap_values.data + dest_off,
-@@ -1537,2 +1564 @@
+@@ -1537,2 +1586 @@
 -            hypers->gamma, hypers->gae_lambda,
 -            hypers->vtrace_rho_clip, hypers->vtrace_c_clip, Nmb, Tmb);
 +            hypers->gamma, hypers->gae_lambda, Nmb, Tmb);
-@@ -1961,0 +1988,7 @@
+@@ -1961,0 +2010,7 @@
 +    pufferl->space_bootstrap_obs = {.shape = {total_agents, input_size}};
 +    pufferl->space_bootstrap_state = {.shape = {num_layers, total_agents, hidden_size}};
 +    pufferl->space_bootstrap_values = {.shape = {total_agents}};
@@ -58,8 +82,13 @@
 +    alloc_register(acts, &pufferl->space_bootstrap_state);
 +    alloc_register(acts, &pufferl->space_bootstrap_values);
 +
-@@ -3028,0 +3062,4 @@
+@@ -3028,0 +3084,4 @@
 +    assert(!use_selfplay && !puf_ini_get(ini, "base", "async"));
 +    assert(puf_ini_get(ini, "vec", "num_policies") == 1);
 +    assert(puf_ini_get(ini, "vec", "num_buffers") == 1);
 +    assert(!puf_ini_get(ini, "train", "vtrace"));
+@@ -3506,0 +3566 @@
++#include "space_native/spaceship_check.cuh"
+@@ -3548,0 +3609,2 @@
++    } else if (strcmp(mode, "space-check") == 0) {
++        space_check_rollout(&ini,&ctx);
