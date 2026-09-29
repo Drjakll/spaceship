@@ -28,5 +28,17 @@ int main(void) {
     a.ships[0].health=0; space_greedy_actions(&a,actions);
     CHECK(actions[0].move==SPACE_STAY && actions[0].fire==0);
     puts("PASS independent greedy agents pursue the most advanced live threat");
+    space_reset(&a,73);
+    a.enemies[0] = (SpaceEnemy){.phase=1,.x=100,.y=500,.health=10};
+    a.enemies[1] = (SpaceEnemy){.phase=1,.x=500,.y=400,.health=10};
+    a.enemies[2] = (SpaceEnemy){.phase=1,.x=900,.y=300,.health=10};
+    for(int i=0;i<3;++i) CHECK(space_lane_target(&a,i)==i);
+    space_lane_actions(&a,actions);
+    CHECK(actions[0].move==SPACE_DOWN_LEFT && actions[2].move==SPACE_DOWN_RIGHT);
+    a.ships[0].health=0;
+    CHECK(space_lane_target(&a,1)==0 && space_lane_target(&a,2)==1);
+    SpaceWorld snapshot = a; space_lane_actions(&a,actions);
+    CHECK(memcmp(&snapshot,&a,sizeof(a))==0);
+    puts("PASS lane team splits threats and redistributes coverage after an ally dies");
     return 0;
 }

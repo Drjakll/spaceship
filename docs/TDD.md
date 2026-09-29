@@ -133,3 +133,7 @@ Red: `clang -std=c11 -Inative tests/test_bots.c native/spaceship_core.c -lm -o b
 ## T017 — independent greedy baseline
 
 Red: `make build/test_bots`, exit 2: undefined `_space_greedy_actions` and `_space_greedy_target`. Green: `make test`, exit 0: `PASS independent greedy agents pursue the most advanced live threat`. Scripted agents independently pursue the lowest live enemy, excluding explosion hazards, with approximate missile lead and inactive-slot no-ops. Static analysis and whitespace checks passed; dependencies unchanged. T016 commit: `f74ed22`.
+
+## T018 — cooperative lane baseline
+
+Red: `make build/test_bots`, exit 2: undefined `_space_lane_actions` and `_space_lane_target`. Green: `make test`, exit 0: `PASS lane team splits threats and redistributes coverage after an ally dies`. Three separated threats get three distinct defenders; surviving ships repartition lanes after a death. Policy reads do not mutate simulation. Static analysis, regression and whitespace checks passed; no dependencies added. T017 commit: `ae9808e`.

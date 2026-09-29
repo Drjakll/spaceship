@@ -39,6 +39,32 @@ void space_greedy_actions(const SpaceWorld *world, SpaceAction actions[SPACE_MAX
     for (int a=0;a<world->config.num_agents;++a)
         actions[a] = aim(world,a,space_greedy_target(world,a),500);
 }
+static int lane(const SpaceWorld *world, int agent, int *living) {
+    int rank = 0; *living = 0;
+    for (int a=0; a<world->config.num_agents; ++a) if (world->ships[a].health > 0) {
+        ++*living;
+        if (a < agent) ++rank;
+    }
+    return rank;
+}
+int space_lane_target(const SpaceWorld *world, int agent) {
+    if (world->ships[agent].health <= 0) return -1;
+    int living; int rank = lane(world, agent, &living), target = -1;
+    float low = 1000.0f * rank / living, high = 1000.0f * (rank+1) / living;
+    for (int e=0;e<SPACE_MAX_ENEMIES;++e) {
+        const SpaceEnemy *enemy = &world->enemies[e];
+        if (enemy->phase == 1 && enemy->x >= low && enemy->x < high &&
+                (target < 0 || enemy->y > world->enemies[target].y)) target = e;
+    }
+    return target;
+}
+void space_lane_actions(const SpaceWorld *world, SpaceAction actions[SPACE_MAX_AGENTS]) {
+    memset(actions, 0, SPACE_MAX_AGENTS * sizeof(*actions));
+    for (int a=0;a<world->config.num_agents;++a) {
+        int living; int rank = lane(world,a,&living);
+        if (living) actions[a] = aim(world,a,space_lane_target(world,a),1000.0f*(rank+.5f)/living);
+    }
+}
 void space_random_actions(const SpaceWorld *world, uint32_t *rng, SpaceAction actions[SPACE_MAX_AGENTS]) {
     memset(actions, 0, SPACE_MAX_AGENTS * sizeof(*actions));
     for (int a = 0; a < world->config.num_agents; ++a) {
