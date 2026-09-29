@@ -153,7 +153,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T026 | P1 | depends: T025 | AC-013 | Implement complete rollout target calculations; done when: independent expected-return fixtures pass before/on/after rollout boundaries for allied team slots.
 - [x] T027 | P1 | depends: T026 | AC-013 | Prepare the cooperative native collector patch; done when: source-provenance checks plus the local collector contract suite validate all-ally routing with side-effect-free bootstrap inputs.
 - [x] T015 | P1 | depends: T027 | AC-010 | Supply bounded shared-policy PPO configuration; done when: native configuration validation accepts every supported team size with a finite step budget.
-- [ ] T016 | P1 | depends: T010 | AC-009 | Implement a seeded random baseline; done when: its fixed-seed evaluation trace reproduces exactly.
+- [x] T016 | P1 | depends: T010 | AC-009 | Implement a seeded random baseline; done when: its fixed-seed evaluation trace reproduces exactly.
 - [ ] T017 | P1 | depends: T016 | AC-009 | Implement an independent greedy baseline; done when: its target-selection scenario produces the expected actions.
 - [ ] T018 | P1 | depends: T017 | AC-009 | Implement a cooperative lane-coverage baseline; done when: its split-threat scenario demonstrates distinct target coverage.
 - [ ] T019 | P1 | depends: T018 | AC-009 | Export fixed-scenario evaluation reports; done when: the baseline report validates against the documented metric schema.

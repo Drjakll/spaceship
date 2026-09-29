@@ -125,3 +125,7 @@ Red: `python3 -m unittest discover -s tests -p test_collector.py`, exit 1: `Coop
 ## T015 — bounded native PPO configuration
 
 Red: `python3 -m unittest discover -s tests -p test_config.py`, exit 1: `NotImplementedError: Cooperative PPO configuration is not implemented`. Green: `make test`, exit 0, six Python checks plus C suites. All 1–8 team sizes produce complete worlds/minibatches and a finite four-update budget; incompatible self-play, async, vtrace, row geometry and missing budget are rejected. Static/whitespace checks passed. Chosen native float32/64-wide/two-layer layout is explicitly checked for four-element tensor alignment; upstream PR 691 reports a padding defect for affected layouts, so BF16 is not supported in this initial configuration. Actual optimizer validation remains a CUDA diagnostic. T027 commit: `706242b`.
+
+## T016 — seeded random baseline
+
+Red: `clang -std=c11 -Inative tests/test_bots.c native/spaceship_core.c -lm -o build/test_bots`, exit 1: undefined `_space_random_actions`. Green: `make test`, exit 0: `PASS seeded random baseline reproduces actions and complete traces`. Independent action RNG does not consume world RNG. A 1000-decision paired replay validates legal actions and identical state. Static analysis, regressions and whitespace checks passed; dependencies unchanged. T015 commit: `f2a4d82`.
