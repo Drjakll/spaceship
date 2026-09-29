@@ -11,12 +11,19 @@ from run_manifest import manifest
 from ppo_config import configuration
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
+def evaluation_identity(binary):
+    return {'binary_sha256':hashlib.sha256(pathlib.Path(binary).read_bytes()).hexdigest(),
+            'source_files':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
+                            for name in ('native/spaceship_core.c','native/spaceship_core.h')}}
+
 def report(policy='lanes', ships=3, split='dev', binary=None, checkpoint=None, wave_size=200, checkpoint_kind='unknown'):
     seeds = list(range(1000,1020)) if split=='dev' else list(range(10000,10100))
     if split not in ('dev','test'): raise ValueError('Unknown scenario split')
+    binary=pathlib.Path(binary or ROOT/'build/evaluate').resolve()
+    build_identity=evaluation_identity(binary)
     episodes=[]; start=time.perf_counter()
     for seed in seeds:
-        command = [str(binary or ROOT/'build/evaluate'), str(checkpoint or policy), str(ships), str(seed), str(wave_size)]
+        command = [str(binary), str(checkpoint or policy), str(ships), str(seed), str(wave_size)]
         episodes.append(json.loads(subprocess.check_output(command,text=True)))
     elapsed=time.perf_counter()-start
     keys=['failure_fraction','escape_fraction','killed','survivors','duration_seconds','episode_return','score']
@@ -24,13 +31,13 @@ def report(policy='lanes', ships=3, split='dev', binary=None, checkpoint=None, w
                   'std':statistics.pstdev(e[k] for e in episodes)} for k in keys}
     rules={'ships':ships,'wave_size':wave_size,'spawn_interval_ticks':108,'drain_ticks':1800,
            'frame_skip':4,'reward':[1,-2,-.02,-1], 'schema':'spaceship-v1-2554'}
-    fingerprint=hashlib.sha256(json.dumps(rules,sort_keys=True).encode()+(ROOT/'native/spaceship_core.c').read_bytes()).hexdigest()
+    fingerprint=hashlib.sha256(json.dumps({'rules':rules,'build':build_identity},sort_keys=True).encode()).hexdigest()
     counters={key:sum(e[key] for e in episodes) for key in ('physics_ticks','world_decisions','agent_slots','active_decisions')}
     counters.update(ppo_updates=0,optimizer_steps=0,wall_seconds=elapsed)
     config=configuration(ships); config['env']['wave_size']=wave_size
     identity=manifest(config,checkpoint,checkpoint_kind,counters)
     return {'schema_version':1,'policy':policy,'trained':False if not checkpoint or checkpoint_kind=='untrained' else True if checkpoint_kind=='trained' else None,
-            'manifest':identity,
+            'manifest':identity,'evaluation_build':build_identity,
             'scenario_split':split,'scenario_seeds':seeds,'rules':rules,'rules_sha256':fingerprint,
             'action_mode':'seeded_sampling' if checkpoint or policy=='random' else 'deterministic_script',
             'episodes':episodes,'aggregate':aggregate,

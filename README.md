@@ -135,7 +135,7 @@ python3 scripts/evaluate.py --policy greedy --output artifacts/dev-greedy.json
 python3 scripts/evaluate.py --policy lanes --ships 1 --output artifacts/dev-one-ship.json
 ```
 
-Reports contain per-seed contributions, mean/population standard deviation, raw escapes, defensive failures, reward components, survival, duration, action RNG seed, configuration/source/checkpoint hashes, and process-inclusive throughput without rendering. Active decisions are counted separately from all allocated agent slots. No throughput threshold is promised.
+Reports contain per-seed contributions, mean/population standard deviation, raw escapes, defensive failures, reward components, survival, duration, action RNG seed, configuration/source/checkpoint hashes, and process-inclusive throughput without rendering. The evaluation executable and core header/source hashes also enter the comparison fingerprint; regenerate reports together after rebuilding. Active decisions are counted separately from all allocated agent slots. No throughput threshold is promised.
 
 **The raw escape target is at most 10%.** Also require at most 10% defensive failures for a successful-defense claim: `(escaped + unresolved + unspawned) / scheduled`. A team dying early cannot pass by simply avoiding later spawns. Both three-ship aiming scripts achieved zero defensive failures on the 20 development scenarios; this does not establish trained-policy quality or learned coordination.
 
