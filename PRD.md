@@ -136,7 +136,7 @@ Review scope: Project root, excluding generated build artifacts, dependencies, l
 This is the authoritative task list. Each task receives its own red/green/refactor evidence and task-specific commit during implementation. Walkthrough evidence belongs beside this list or in the final walkthrough, without a second independent task checklist.
 
 - [x] T001 | P0 | depends: none | AC-001 | Introduce an isolated seeded arena reset; done when: the reset-isolation fixture passes through the new C test runner.
-- [ ] T002 | P0 | depends: T001 | AC-002 | Implement simultaneous fixed-timestep ship movement; done when: the joint-action movement fixture passes for supported team sizes.
+- [x] T002 | P0 | depends: T001 | AC-002 | Implement simultaneous fixed-timestep ship movement; done when: the joint-action movement fixture passes for supported team sizes.
 - [ ] T003 | P0 | depends: T002 | AC-002 | Implement per-ship missile firing; done when: the projectile ownership/cooldown fixture passes.
 - [ ] T004 | P0 | depends: T001 | AC-001 | Implement seeded enemy waves; done when: the fixed-seed variant/trajectory fixture matches its expected schedule.
 - [ ] T005 | P0 | depends: T003, T004 | AC-002 | Resolve missile damage across allied shooters; done when: the combined-damage fixture records exactly one kill with the expected contributors.

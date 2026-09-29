@@ -39,6 +39,10 @@ typedef struct {
     float x, y, vy;
 } SpaceProjectile;
 
+typedef struct { int move, fire; } SpaceAction;
+enum { SPACE_STAY, SPACE_UP, SPACE_DOWN, SPACE_LEFT, SPACE_RIGHT,
+       SPACE_UP_LEFT, SPACE_UP_RIGHT, SPACE_DOWN_LEFT, SPACE_DOWN_RIGHT };
+
 typedef struct {
     SpaceConfig config;
     uint32_t rng;
@@ -55,4 +59,5 @@ typedef struct {
 SpaceConfig space_default_config(void);
 bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed);
 void space_reset(SpaceWorld *world, uint32_t seed);
+bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]);
 #endif

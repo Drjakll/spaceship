@@ -1,5 +1,6 @@
 #include "spaceship_core.h"
 #include <string.h>
+#include <math.h>
 
 SpaceConfig space_default_config(void) {
     SpaceConfig config = {0};
@@ -35,5 +36,27 @@ bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed) {
     }
     world->config = config;
     space_reset(world, seed);
+    return true;
+}
+
+bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
+    if (!world || !actions || world->terminal) return false;
+    for (int i = 0; i < world->config.num_agents; ++i) {
+        if (actions[i].move < 0 || actions[i].move > 8 ||
+            actions[i].fire < 0 || actions[i].fire > 1) return false;
+    }
+    static const int dx[9] = {0, 0, 0, -1, 1, -1, 1, -1, 1};
+    static const int dy[9] = {0, -1, 1, 0, 0, -1, -1, 1, 1};
+    for (int tick = 0; tick < world->config.frame_skip; ++tick) {
+        for (int i = 0; i < world->config.num_agents; ++i) {
+            SpaceShip *ship = &world->ships[i];
+            if (ship->health <= 0) continue;
+            int move = actions[i].move;
+            float speed = move >= SPACE_UP_LEFT ? 5.0f / sqrtf(2.0f) : 5.0f;
+            ship->x = fminf(975, fmaxf(25, ship->x + speed * dx[move]));
+            ship->y = fminf(975, fmaxf(25, ship->y + speed * dy[move]));
+        }
+        ++world->tick;
+    }
     return true;
 }
