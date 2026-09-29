@@ -41,7 +41,7 @@ def validate(config):
     h, layers = c['policy']['hidden_size'], c['policy']['num_layers']
     if h != 64 or layers != 2: raise ValueError('Initial supported model is hidden=64, layers=2')
     # Float32 allocator has 16-byte / 4-element alignment. Every tensor is aligned.
-    shapes = [2554*h, h, h*12, 12] + [h*3*h, 3*h]*layers
+    shapes = [2554*h, h*12] + [h*3*h]*layers
     if any(size % 4 for size in shapes): raise ValueError('Unsupported padded optimizer layout')
     return {'arenas': agents // ships, 'world_decisions_per_update': agents // ships * horizon,
             'agent_slots_per_update': agents * horizon, 'updates': steps // (agents * horizon),

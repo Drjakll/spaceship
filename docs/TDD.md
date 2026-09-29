@@ -147,3 +147,9 @@ T032 evidence correction: the first ordinary `make test` reused a stale core exe
 ## T019 — fixed-scenario reports
 
 Red: `make build/evaluate && python3 -m unittest discover -s tests -p test_evaluate.py`, exit 1: `Evaluation reports are not implemented`. Green: `make -B test`, exit 0, seven Python checks plus C suites. Paired runs of all three policies match every semantic metric, conserve enemy obligations, distinguish active decisions from slots, and reconcile reward components/ship kills. Static/whitespace checks passed. Twenty development scenarios (1000–1019) were run for each baseline and for one-ship lanes; reports are in ignored artifacts, summarized in `docs/BASELINES.md`. Reserved test seeds have not been consumed. T032 commit: `329e0a0`.
+
+## T020 — native CPU checkpoint evaluation
+
+Red: `clang -std=c11 -O2 -Inative native/checkpoint.c native/spaceship_core.c -lm -o build/checkpoint && python3 tests/check_checkpoint.py build/checkpoint`, exit 1: `Native checkpoint evaluation is not implemented`. Green: real-upstream check, exit 0: `PASS real PufferNet checkpoint load, recurrent evaluation and truncated-file rejection`. The test constructs an explicitly untrained native-layout artifact, validates the upstream constructor consumed exactly 188800 weights, runs two identical complete seven-enemy episodes through upstream `forward_puffernet`, and rejects a truncated checkpoint before inference. Core/Python regressions, static and whitespace checks passed. Full 200-enemy development evaluation was also launched separately; its quality cannot be described as trained. T019 commit: `40fda41`.
+
+T015 layout detail correction after inspecting the native constructors: the model is bias-free. Its actual tensors are all divisible by eight; no CPU alignment patch is required. `docs/DEPENDENCIES.md` and configuration shape checks now reflect the actual 188800-weight layout.

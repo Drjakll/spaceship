@@ -19,6 +19,12 @@ def main():
                     '-DPUFFERCPU_SOURCE="' + str(root / "src/puffercpu.c") + '"',
                     str(PROJECT / "tests/test_puffercpu.c"), "-lm", "-o", str(target)], check=True)
     subprocess.run([str(target)], check=True)
+    checkpoint = build / "checkpoint"
+    subprocess.run([args.cc, "-std=c11", "-O2", "-I" + str(PROJECT / "native"),
+                    '-DPUFFERCPU_SOURCE="' + str(root / "src/puffercpu.c") + '"',
+                    str(PROJECT / "native/checkpoint.c"), str(PROJECT / "native/spaceship_core.c"),
+                    "-lm", "-o", str(checkpoint)], check=True)
+    subprocess.run(["python3", str(PROJECT / "tests/check_checkpoint.py"), str(checkpoint)], check=True)
     target = build / "test_adapter"
     subprocess.run([args.cc, "-std=c11", "-O2", "-I" + str(PROJECT / "native"),
                     "-I" + str(PROJECT / "tests/stubs"), "-I" + str(root / "src"),
