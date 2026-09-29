@@ -14,7 +14,10 @@ build/test_ppo: tests/test_ppo.c native/spaceship_ppo.h
 build/test_bots: tests/test_bots.c native/spaceship_core.c native/spaceship_bots.c native/spaceship_bots.h
 	mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_bots.c native/spaceship_core.c native/spaceship_bots.c $(LDLIBS) -o $@
-test: build/test_core build/test_ppo build/test_bots
+build/evaluate: native/evaluate.c native/spaceship_core.c native/spaceship_bots.c native/spaceship_core.h native/spaceship_eval.h
+	mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) native/evaluate.c native/spaceship_core.c native/spaceship_bots.c $(LDLIBS) -o $@
+test: build/test_core build/test_ppo build/test_bots build/evaluate
 	./build/test_core
 	./build/test_ppo
 	./build/test_bots

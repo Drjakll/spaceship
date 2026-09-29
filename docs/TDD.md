@@ -141,3 +141,9 @@ Red: `make build/test_bots`, exit 2: undefined `_space_lane_actions` and `_space
 ## T032 — original score metric
 
 Added a corrective atomic task for the already-approved original-score requirement before report export. Red: `make build/test_core && ./build/test_core`, exit 1: `world.score == 4`. Green: `make test`, exit 0, verifies a type-1 cooperative kill awards four points exactly once. Score uses original 2/4/8 values and is separate from episode return in native logs. Real-upstream integration, static analysis and whitespace checks passed; dependencies unchanged. T018 commit: `6f51ae2`.
+
+T032 evidence correction: the first ordinary `make test` reused a stale core executable and failed the old score assertion. The commit was made before noticing that result. A subsequent forced `make -B test`, `make analyze`, and real-upstream harness all passed (exit 0). The actual green command was the forced rebuild; no test was weakened.
+
+## T019 — fixed-scenario reports
+
+Red: `make build/evaluate && python3 -m unittest discover -s tests -p test_evaluate.py`, exit 1: `Evaluation reports are not implemented`. Green: `make -B test`, exit 0, seven Python checks plus C suites. Paired runs of all three policies match every semantic metric, conserve enemy obligations, distinguish active decisions from slots, and reconcile reward components/ship kills. Static/whitespace checks passed. Twenty development scenarios (1000–1019) were run for each baseline and for one-ship lanes; reports are in ignored artifacts, summarized in `docs/BASELINES.md`. Reserved test seeds have not been consumed. T032 commit: `329e0a0`.

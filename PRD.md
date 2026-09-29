@@ -157,7 +157,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T017 | P1 | depends: T016 | AC-009 | Implement an independent greedy baseline; done when: its target-selection scenario produces the expected actions.
 - [x] T018 | P1 | depends: T017 | AC-009 | Implement a cooperative lane-coverage baseline; done when: its split-threat scenario demonstrates distinct target coverage.
 - [x] T032 | P1 | depends: T018 | AC-004 | Preserve original score independently of RL return; done when: type-specific kill score and single-award tests pass.
-- [ ] T019 | P1 | depends: T018 | AC-009 | Export fixed-scenario evaluation reports; done when: the baseline report validates against the documented metric schema.
+- [x] T019 | P1 | depends: T018 | AC-009 | Export fixed-scenario evaluation reports; done when: the baseline report validates against the documented metric schema.
 - [ ] T020 | P1 | depends: T015, T019 | AC-010 | Add checkpoint evaluation through the upstream policy runtime; done when: a valid compatible checkpoint produces a complete evaluation report.
 - [ ] T028 | P1 | depends: T020 | AC-015 | Record reproducible run manifests; done when: the manifest fixture validates source/configuration/checkpoint identities with explicit step units.
 - [ ] T029 | P1 | depends: T028 | AC-015 | Select checkpoints using development scenarios; done when: the ranking fixture retains the expected checkpoint without reading held-out results.
