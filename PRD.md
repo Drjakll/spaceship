@@ -151,7 +151,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T014 | P1 | depends: T013 | AC-007 | Implement native team episode boundaries; done when: the lifecycle fixture verifies terminal metrics plus reset observations across consecutive episodes.
 - [x] T025 | P1 | depends: T014 | AC-014 | Preserve reward magnitudes in learner transport; done when: the raw-to-target fixture retains the configured kill/escape ratio for interior plus boundary transitions.
 - [x] T026 | P1 | depends: T025 | AC-013 | Implement complete rollout target calculations; done when: independent expected-return fixtures pass before/on/after rollout boundaries for allied team slots.
-- [ ] T027 | P1 | depends: T026 | AC-013 | Prepare the cooperative native collector patch; done when: source-provenance checks plus the local collector contract suite validate all-ally routing with side-effect-free bootstrap inputs.
+- [x] T027 | P1 | depends: T026 | AC-013 | Prepare the cooperative native collector patch; done when: source-provenance checks plus the local collector contract suite validate all-ally routing with side-effect-free bootstrap inputs.
 - [ ] T015 | P1 | depends: T027 | AC-010 | Supply bounded shared-policy PPO configuration; done when: native configuration validation accepts every supported team size with a finite step budget.
 - [ ] T016 | P1 | depends: T010 | AC-009 | Implement a seeded random baseline; done when: its fixed-seed evaluation trace reproduces exactly.
 - [ ] T017 | P1 | depends: T016 | AC-009 | Implement an independent greedy baseline; done when: its target-selection scenario produces the expected actions.

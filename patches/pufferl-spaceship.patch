@@ -1,0 +1,65 @@
+--- a/src/pufferl.cu
++++ b/src/pufferl.cu
+@@ -539,0 +540 @@
++    Prec space_bootstrap_obs, space_bootstrap_state, space_bootstrap_values;
+@@ -1459,0 +1461,26 @@
++// Spaceship reads the next value using a private copy of recurrent memory.
++__global__ void space_extract_value(const precision_t* dec, precision_t* values, int rows, int columns) {
++    int row = blockIdx.x * blockDim.x + threadIdx.x;
++    if (row < rows) values[row] = dec[row * columns + columns - 1];
++}
++static void space_prepare_bootstrap(PuffeRL* p, cudaStream_t stream) {
++    assert(PUF_BACKEND == PUF_CPU && !p->hypers.async && !p->hypers.vtrace);
++    assert(p->hypers.num_buffers == 1 && p->num_policies == 1);
++    assert(p->vec->policy_layout[0] == 0);
++    assert(p->vec->policy_layout[1] == p->hypers.total_agents);
++    int rows = p->hypers.total_agents;
++    Policy* primary = &p->policies[0];
++    int obs_n = rows * p->env.obs.shape[1];
++    cast<<<grid_size(obs_n), BLOCK_SIZE, 0, stream>>>(p->space_bootstrap_obs.data, p->env.obs.data, obs_n);
++    Prec carry = primary->buffer_states[0];
++    cudaMemcpyAsync(p->space_bootstrap_state.data, carry.data,
++        numel(carry.shape) * sizeof(precision_t), cudaMemcpyDeviceToDevice, stream);
++    zero_term_state<<<grid_size(numel(carry.shape)), BLOCK_SIZE, 0, stream>>>(
++        p->space_bootstrap_state, p->env.terminals, 0, 0, rows);
++    Prec dec = arch_forward(&primary->arch, primary->weights, primary->buf_acts[0],
++        p->space_bootstrap_obs, p->space_bootstrap_state, stream);
++    space_extract_value<<<grid_size(rows), BLOCK_SIZE, 0, stream>>>(
++        dec.data, p->space_bootstrap_values.data, rows, dec.shape[1]);
++}
++// End Spaceship bootstrap
++
+@@ -1465,0 +1493 @@
++    space_prepare_bootstrap(pufferl, stream);
+@@ -1487,3 +1515 @@
+-    clamp_precision_kernel<<<grid_size(
+-        numel(rollouts->rewards.shape)), BLOCK_SIZE, 0, stream>>>(
+-        rollouts->rewards.data, -1.0f, 1.0f, numel(rollouts->rewards.shape));
++    // Spaceship preserves raw team reward magnitudes (identity scaling).
+@@ -1532,4 +1558,5 @@
+-        puff_advantage<<<adv_grid, ADV_THREADS, 0, stream>>>(
+-            graph.mb_gae_v.data, graph.mb_rewards.data,
+-            graph.mb_terminals.data,
+-            hypers->vtrace ? graph.mb_imp.data : NULL,
++        space_advantage<<<adv_grid, ADV_THREADS, 0, stream>>>(
++            graph.mb_gae_v.data, graph.mb_rewards.data, graph.mb_terminals.data,
++            pufferl->env.rewards.data + dest_off,
++            pufferl->env.terminals.data + dest_off,
++            pufferl->space_bootstrap_values.data + dest_off,
+@@ -1537,2 +1564 @@
+-            hypers->gamma, hypers->gae_lambda,
+-            hypers->vtrace_rho_clip, hypers->vtrace_c_clip, Nmb, Tmb);
++            hypers->gamma, hypers->gae_lambda, Nmb, Tmb);
+@@ -1961,0 +1988,7 @@
++    pufferl->space_bootstrap_obs = {.shape = {total_agents, input_size}};
++    pufferl->space_bootstrap_state = {.shape = {num_layers, total_agents, hidden_size}};
++    pufferl->space_bootstrap_values = {.shape = {total_agents}};
++    alloc_register(acts, &pufferl->space_bootstrap_obs);
++    alloc_register(acts, &pufferl->space_bootstrap_state);
++    alloc_register(acts, &pufferl->space_bootstrap_values);
++
+@@ -3028,0 +3062,4 @@
++    assert(!use_selfplay && !puf_ini_get(ini, "base", "async"));
++    assert(puf_ini_get(ini, "vec", "num_policies") == 1);
++    assert(puf_ini_get(ini, "vec", "num_buffers") == 1);
++    assert(!puf_ini_get(ini, "train", "vtrace"));

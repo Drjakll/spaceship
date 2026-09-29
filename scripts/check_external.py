@@ -10,6 +10,8 @@ def main():
     parser.add_argument("--cc", default="clang")
     args = parser.parse_args()
     root = verify(args.pufferlib_root)
+    subprocess.run(["patch", "--dry-run", "-p1", "-i", str(PROJECT / "patches/pufferl-spaceship.patch")],
+                   cwd=root, check=True)
     build = PROJECT / "build"
     build.mkdir(exist_ok=True)
     target = build / "test_puffercpu"

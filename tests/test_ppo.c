@@ -28,5 +28,12 @@ int main(void) {
         }
     }
     puts("PASS independent GAE oracle before/on/after boundaries for every team size");
+    float incoming_rewards[] = {999, 1, -2, 3}, incoming_done[] = {1, 0, 0, 0};
+    float aliased_values[] = {2, 3, 5, 7}, collector_adv[4];
+    space_collector_gae(aliased_values, incoming_rewards, incoming_done, 4, 1, 999, 4,
+                        .5f, 1, collector_adv, aliased_values);
+    const float returns[] = {1.25f, .5f, 5, 4};
+    for (int t = 0; t < 4; ++t) CHECK(aliased_values[t] == returns[t]);
+    puts("PASS actual collector incoming-index layout and aliased return storage");
     return 0;
 }
