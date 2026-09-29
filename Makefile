@@ -17,10 +17,14 @@ build/test_bots: tests/test_bots.c native/spaceship_core.c native/spaceship_bots
 build/evaluate: native/evaluate.c native/spaceship_core.c native/spaceship_bots.c native/spaceship_core.h native/spaceship_eval.h
 	mkdir -p build
 	$(CC) $(CPPFLAGS) $(CFLAGS) native/evaluate.c native/spaceship_core.c native/spaceship_bots.c $(LDLIBS) -o $@
-test: build/test_core build/test_ppo build/test_bots build/evaluate
+build/test_input: tests/test_input.c native/spaceship_input.c native/spaceship_bots.c native/spaceship_core.c native/spaceship_core.h native/spaceship_input.h
+	mkdir -p build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_input.c native/spaceship_input.c native/spaceship_bots.c native/spaceship_core.c $(LDLIBS) -o $@
+test: build/test_core build/test_ppo build/test_bots build/test_input build/evaluate
 	./build/test_core
 	./build/test_ppo
 	./build/test_bots
+	./build/test_input
 	python3 -m unittest discover -s tests -p 'test_*.py'
 sanitize:
 	mkdir -p build

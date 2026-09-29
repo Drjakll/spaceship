@@ -89,6 +89,7 @@ void space_view_draw(const SpaceView *v,const SpaceWorld *w,const char *policy,b
         text(v,line,818,724,13,COLORS[1]);
     }
     text(v,"P  pause     R  new seed     ESC  exit",818,772,12,MUTED);
+    if(strstr(policy,"MANUAL")) text(v,"WASD / arrows  move     SPACE  fire",818,748,12,COLORS[0]);
     text(v,"30 decisions/s  /  120 physics ticks/s",24,823,11,MUTED);
     EndDrawing();
 }
