@@ -57,6 +57,7 @@ void puf_reset(Env *env) {
     space_publish(env);
 }
 void puf_step(Env *env) {
+    env->boundary_reached = 0;
     SpaceAction actions[SPACE_MAX_AGENTS] = {0};
     for (int a = 0; a < env->num_agents; ++a) {
         float move = env->agents[a].actions[0], fire = env->agents[a].actions[1];
@@ -68,6 +69,23 @@ void puf_step(Env *env) {
     }
     if (!space_step(&env->world, actions)) { fprintf(stderr, "Spaceship step failed\n"); abort(); }
     space_publish(env);
+    if (env->world.terminal) {
+        float reward = env->world.reward;
+        env->log.n += 1;
+        env->log.perf += 1 - space_failure_fraction(&env->world);
+        env->log.score += (float)env->world.episode_return;
+        env->log.killed += env->world.killed;
+        env->log.escaped += env->world.escaped;
+        env->log.failure_fraction += space_failure_fraction(&env->world);
+        env->log.episode_length += env->world.tick / 120.0f;
+        for (int a = 0; a < env->num_agents; ++a) env->log.survivors += env->world.ships[a].health > 0;
+        puf_reset(env);
+        env->boundary_reached = 1;
+        for (int a = 0; a < env->num_agents; ++a) {
+            *env->agents[a].rewards = reward;
+            *env->agents[a].terminals = 1;
+        }
+    }
 }
 void puf_render(Env *env) { (void)env; }
 void puf_close(Env *env) { (void)env; }

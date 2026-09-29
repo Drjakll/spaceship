@@ -44,8 +44,33 @@ int main(void) {
     CHECK(second.world.tick == 0 && second.world.ships[0].y == 850);
     CHECK(a.observations[0][1] == 0.83f);
     for (int i = 0; i < 3; ++i) CHECK(a.rewards[i] == first.world.reward && a.terminals[i] == 0);
+    first.world.ships[0].health = 0;
+    float old_y = first.world.ships[0].y;
+    puf_step(&first);
+    CHECK(first.world.ships[0].y == old_y && !a.terminals[0]);
+    for (int episode = 0; episode < 2; ++episode) {
+        first.world.config.wave_size = 1;
+        first.world.spawned = 1;
+        first.world.enemies[0].phase = 1;
+        first.world.enemies[0].health = 10;
+        first.world.enemies[0].y = 1026;
+        puf_step(&first);
+        CHECK(first.boundary_reached == 1);
+        CHECK(first.world.tick == 0 && first.world.ships[0].health == 50);
+        CHECK(first.log.n == episode + 1 && first.log.escaped == episode + 1);
+        for (int i = 0; i < 3; ++i) {
+            CHECK(a.terminals[i] == 1 && a.rewards[i] == -2);
+            CHECK(a.observations[i][9] == 0 && a.observations[i][1] == 0.85f);
+        }
+        puf_step(&first);
+        CHECK(first.boundary_reached == 0 && a.terminals[0] == 0 && a.rewards[0] == 0);
+    }
+    Dict logs = {0}; puf_log(&first.log, &logs);
+    CHECK(dict_get(&logs, "n") == 2 && dict_get(&logs, "escaped") == 2);
+    dict_clear(&logs);
     puf_close(&first); puf_close(&second);
     dict_clear(&kwargs);
     puts("PASS real PufferLib buffers route all allies across isolated worlds");
+    puts("PASS dead slots and consecutive team boundaries preserve rewards and reset observations");
     return 0;
 }
