@@ -129,3 +129,7 @@ Red: `python3 -m unittest discover -s tests -p test_config.py`, exit 1: `NotImpl
 ## T016 — seeded random baseline
 
 Red: `clang -std=c11 -Inative tests/test_bots.c native/spaceship_core.c -lm -o build/test_bots`, exit 1: undefined `_space_random_actions`. Green: `make test`, exit 0: `PASS seeded random baseline reproduces actions and complete traces`. Independent action RNG does not consume world RNG. A 1000-decision paired replay validates legal actions and identical state. Static analysis, regressions and whitespace checks passed; dependencies unchanged. T015 commit: `f2a4d82`.
+
+## T017 — independent greedy baseline
+
+Red: `make build/test_bots`, exit 2: undefined `_space_greedy_actions` and `_space_greedy_target`. Green: `make test`, exit 0: `PASS independent greedy agents pursue the most advanced live threat`. Scripted agents independently pursue the lowest live enemy, excluding explosion hazards, with approximate missile lead and inactive-slot no-ops. Static analysis and whitespace checks passed; dependencies unchanged. T016 commit: `f74ed22`.

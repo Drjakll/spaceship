@@ -17,5 +17,16 @@ int main(void) {
         if(a.terminal) {space_reset(&a,73+t);space_reset(&b,73+t);}
     }
     puts("PASS seeded random baseline reproduces actions and complete traces");
+    space_reset(&a,73);
+    a.enemies[0] = (SpaceEnemy){.phase=1,.x=400,.y=500,.health=10};
+    a.enemies[1] = (SpaceEnemy){.phase=1,.x=900,.y=200,.health=10};
+    a.enemies[2] = (SpaceEnemy){.phase=2,.x=250,.y=700,.health=0};
+    CHECK(space_greedy_target(&a,0)==0 && space_greedy_target(&a,2)==0);
+    SpaceAction actions[8]; space_greedy_actions(&a,actions);
+    CHECK(actions[0].move==SPACE_DOWN_RIGHT && actions[2].move==SPACE_DOWN_LEFT);
+    CHECK(actions[0].fire==1 && actions[2].fire==1);
+    a.ships[0].health=0; space_greedy_actions(&a,actions);
+    CHECK(actions[0].move==SPACE_STAY && actions[0].fire==0);
+    puts("PASS independent greedy agents pursue the most advanced live threat");
     return 0;
 }
