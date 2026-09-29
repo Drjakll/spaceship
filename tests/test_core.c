@@ -222,6 +222,36 @@ static void test_episodes(void) {
     puts("PASS episode termination with conserved enemy obligations");
 }
 
+static void test_rewards(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 3;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .x=500, .y=500, .health=10};
+    world.enemies[1] = (SpaceEnemy){.phase=1, .x=750, .y=1026, .health=10};
+    world.enemies[2] = (SpaceEnemy){.phase=1, .x=250, .y=850, .health=10};
+    world.projectiles[0] = (SpaceProjectile){1, 1, 500, 501, 0};
+    world.ships[0].health = 5;
+    CHECK(space_step(&world, actions));
+    CHECK(fabsf(world.reward - (-2.1f)) < 0.00001f);
+    CHECK(world.step_kills == 1 && world.step_escapes == 1 && world.step_deaths == 1);
+    CHECK(world.step_damage == 5);
+    CHECK(space_step(&world, actions));
+    CHECK(world.reward == 0 && world.step_kills == 0 && world.step_escapes == 0);
+    CHECK(world.step_deaths == 0 && world.step_damage == 0);
+    CHECK(fabs(world.episode_return - (-2.1)) < 0.00001);
+    config.reward_kill = 2;
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 1;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .x=500, .y=500, .health=10};
+    world.projectiles[0] = (SpaceProjectile){1, 1, 500, 501, 0};
+    CHECK(space_step(&world, actions));
+    CHECK(world.reward == 2);
+    puts("PASS configurable team reward with no event carry-over");
+}
+
 int main(void) {
     test_reset();
     test_movement();
@@ -231,6 +261,7 @@ int main(void) {
     test_hazards();
     test_escapes();
     test_episodes();
+    test_rewards();
     puts("All core tests passed");
     return 0;
 }

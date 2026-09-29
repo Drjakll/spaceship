@@ -143,7 +143,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T006 | P0 | depends: T005 | AC-002 | Implement contact hazards; done when: the health/cooldown fixture validates enemy contact plus explosion lifecycle.
 - [x] T007 | P0 | depends: T006 | AC-003 | Account for live enemy escapes; done when: the boundary fixture records each escape exactly once.
 - [x] T008 | P0 | depends: T007 | AC-003 | Implement wave termination accounting; done when: the terminal fixture partitions all scheduled enemies correctly for every termination reason.
-- [ ] T009 | P0 | depends: T008 | AC-004 | Emit configurable shared rewards; done when: the event fixture matches every expected reward component across consecutive steps.
+- [x] T009 | P0 | depends: T008 | AC-004 | Emit configurable shared rewards; done when: the event fixture matches every expected reward component across consecutive steps.
 - [ ] T010 | P0 | depends: T009 | AC-005 | Encode fixed-size per-agent observations; done when: the schema fixture validates normalized values plus inactive-slot padding.
 - [ ] T011 | P0 | depends: T010 | AC-001 | Enforce bounded simulation storage; done when: the capacity/replay stress suite passes under supported sanitizers.
 - [ ] T012 | P1 | depends: T011 | AC-006 | Establish the pinned PufferLib 5.0 dependency build; done when: the real upstream CPU smoke builds at the recorded revision.

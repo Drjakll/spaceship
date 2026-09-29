@@ -188,6 +188,8 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
         if (actions[i].move < 0 || actions[i].move > 8 ||
             actions[i].fire < 0 || actions[i].fire > 1) return false;
     }
+    world->step_kills = world->step_escapes = world->step_deaths = 0;
+    world->step_damage = world->reward = 0;
     static const int dx[9] = {0, 0, 0, -1, 1, -1, 1, -1, 1};
     static const int dy[9] = {0, -1, 1, 0, 0, -1, -1, 1, 1};
     for (int tick = 0; tick < world->config.frame_skip; ++tick) {
@@ -218,5 +220,10 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
         finish_episode(world);
         if (world->terminal) break;
     }
+    world->reward = world->config.reward_kill * world->step_kills
+        + world->config.reward_escape * world->step_escapes
+        + world->config.reward_damage * world->step_damage
+        + world->config.reward_death * world->step_deaths;
+    world->episode_return += world->reward;
     return true;
 }
