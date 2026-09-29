@@ -49,3 +49,9 @@ Green: `make test`, exit 0: `PASS deterministic enemy wave schedule and bounded 
 Red: `make test`, exit 2: `FAIL tests/test_core.c:135: world.killed == 1 && world.step_kills == 1`.
 Green: `make test`, exit 0: `PASS shared damage with single kill and assist attribution` and `All core tests passed`.
 Static analysis and whitespace checks passed; no new third-party dependencies. T004 commit: `73873b0`.
+
+## T006 — contact hazards
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:159: world.ships[0].health == 0 && world.ships[1].health == 40`.
+Green: `make test`, exit 0: `PASS per-ship contact damage and finite explosion hazards` and `All core tests passed`.
+Static analysis and whitespace checks passed; no new third-party dependencies. T005 commit: `526ccb8`.

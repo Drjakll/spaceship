@@ -144,12 +144,40 @@ static void test_shared_damage(void) {
     puts("PASS shared damage with single kill and assist attribution");
 }
 
+static void test_hazards(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 1;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .type=2, .x=500, .y=500, .health=25};
+    world.ships[0].x = world.ships[1].x = 500;
+    world.ships[0].y = world.ships[1].y = 500;
+    world.ships[0].health = 4;
+    CHECK(space_step(&world, actions));
+    CHECK(world.ships[0].health == 0 && world.ships[1].health == 40);
+    CHECK(world.step_damage == 14 && world.step_deaths == 1);
+    CHECK(space_step(&world, actions));
+    CHECK(world.ships[0].health == 0 && world.ships[1].health == 40);
+    world.enemies[0].phase = 2;
+    world.enemies[0].explosion_ticks = 2;
+    memset(world.enemies[0].contact_cooldown, 0, sizeof(world.enemies[0].contact_cooldown));
+    CHECK(space_step(&world, actions));
+    CHECK(world.ships[1].health == 39);
+    CHECK(space_step(&world, actions));
+    CHECK(world.enemies[0].phase == 0);
+    CHECK(world.escaped == 0);
+    puts("PASS per-ship contact damage and finite explosion hazards");
+}
+
 int main(void) {
     test_reset();
     test_movement();
     test_firing();
     test_waves();
     test_shared_damage();
+    test_hazards();
     puts("All core tests passed");
     return 0;
 }
