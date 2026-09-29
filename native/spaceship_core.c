@@ -1,6 +1,7 @@
 #include "spaceship_core.h"
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 SpaceConfig space_default_config(void) {
     SpaceConfig config = {0};
@@ -31,12 +32,25 @@ void space_reset(SpaceWorld *world, uint32_t seed) {
 bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed) {
     if (!world || config.num_agents < 1 || config.num_agents > SPACE_MAX_AGENTS ||
         config.wave_size < 1 || config.spawn_interval_ticks < 1 ||
-        config.drain_ticks < 1 || config.frame_skip < 1) {
+        config.drain_ticks < 1 || config.frame_skip < 1 || config.frame_skip > 120 ||
+        (int64_t)config.wave_size * config.spawn_interval_ticks + config.drain_ticks > INT_MAX ||
+        !isfinite(config.reward_kill) || !isfinite(config.reward_escape) ||
+        !isfinite(config.reward_damage) || !isfinite(config.reward_death) ||
+        fabsf(config.reward_kill) > 1e6f || fabsf(config.reward_escape) > 1e6f ||
+        fabsf(config.reward_damage) > 1e6f || fabsf(config.reward_death) > 1e6f) {
         return false;
     }
     world->config = config;
     space_reset(world, seed);
     return true;
+}
+
+static bool capacity_error(SpaceWorld *world) {
+    world->overflow = world->terminal = 1;
+    world->terminal_reason = SPACE_ERROR;
+    world->unresolved = world->spawned - world->killed - world->escaped;
+    world->unspawned = world->config.wave_size - world->spawned;
+    return false;
 }
 
 static bool fire_missile(SpaceWorld *world, int owner) {
@@ -48,8 +62,7 @@ static bool fire_missile(SpaceWorld *world, int owner) {
         ship->cooldown = 30;
         return true;
     }
-    world->overflow = 1;
-    return false;
+    return capacity_error(world);
 }
 
 static uint32_t space_random(SpaceWorld *world) {
@@ -78,8 +91,7 @@ static bool spawn_enemy(SpaceWorld *world) {
         enemy->health = health[enemy->type];
         return true;
     }
-    world->overflow = 1;
-    return false;
+    return capacity_error(world);
 }
 
 static void move_enemies(SpaceWorld *world) {

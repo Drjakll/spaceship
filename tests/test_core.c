@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 #define CHECK(condition) do { if (!(condition)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition); exit(1); } } while (0)
 
@@ -280,6 +281,65 @@ static void test_observations(void) {
     puts("PASS stable normalized observations with complete zero padding");
 }
 
+static void test_capacity(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.reward_kill = NAN;
+    CHECK(!space_init(&world, config, 73));
+    config = space_default_config(); config.wave_size = INT_MAX;
+    CHECK(!space_init(&world, config, 73));
+    config = space_default_config(); config.frame_skip = 121;
+    CHECK(!space_init(&world, config, 73));
+    config = space_default_config(); config.frame_skip = 1;
+    CHECK(space_init(&world, config, 73));
+    for (int i = 0; i < SPACE_MAX_PROJECTILES; ++i) world.projectiles[i] = (SpaceProjectile){1, 0, 250, 700, 30};
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    actions[0].fire = 1;
+    CHECK(!space_step(&world, actions));
+    CHECK(world.overflow && world.terminal_reason == SPACE_ERROR && world.terminal);
+    CHECK(!space_step(&world, actions));
+    CHECK(space_init(&world, config, 73));
+    world.tick = 107; world.spawned = 64;
+    for (int i = 0; i < SPACE_MAX_ENEMIES; ++i) world.enemies[i] = (SpaceEnemy){.phase=1, .x=25, .y=0, .health=10};
+    actions[0].fire = 0;
+    CHECK(!space_step(&world, actions));
+    CHECK(world.overflow && world.terminal_reason == SPACE_ERROR && world.spawned == 64);
+    puts("PASS invalid configuration and explicit capacity failures");
+}
+
+static void test_stress(void) {
+    SpaceWorld a, b;
+    SpaceConfig config = space_default_config();
+    config.num_agents = 8;
+    CHECK(space_init(&a, config, 73) && space_init(&b, config, 73));
+    uint32_t rng = 91;
+    int episodes = 0;
+    for (int decision = 0; decision < 125000; ++decision) {
+        SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+        for (int agent = 0; agent < 8; ++agent) {
+            rng = rng * UINT32_C(1664525) + UINT32_C(1013904223);
+            actions[agent].move = (int)((rng >> 8) % 9);
+            actions[agent].fire = (int)((rng >> 24) & 1);
+        }
+        CHECK(space_step(&a, actions) && space_step(&b, actions));
+        CHECK(memcmp(&a, &b, sizeof(a)) == 0);
+        if (decision % 97 == 0) {
+            float obs[SPACE_OBSERVATION_SIZE];
+            CHECK(space_observe(&a, decision % 8, obs));
+            for (int i = 0; i < SPACE_OBSERVATION_SIZE; ++i) CHECK(isfinite(obs[i]) && fabsf(obs[i]) <= 1.00001f);
+        }
+        CHECK(a.killed + a.escaped <= a.spawned && a.spawned <= config.wave_size);
+        if (a.terminal) {
+            CHECK(a.killed + a.escaped + a.unresolved + a.unspawned == config.wave_size);
+            ++episodes;
+            space_reset(&a, (uint32_t)episodes);
+            space_reset(&b, (uint32_t)episodes);
+        }
+    }
+    CHECK(episodes > 1);
+    printf("PASS 1000000 allied decision slots across %d episodes with deterministic replay\n", episodes);
+}
+
 int main(void) {
     test_reset();
     test_movement();
@@ -291,6 +351,8 @@ int main(void) {
     test_episodes();
     test_rewards();
     test_observations();
+    test_capacity();
+    test_stress();
     puts("All core tests passed");
     return 0;
 }

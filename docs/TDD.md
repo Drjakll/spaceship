@@ -79,3 +79,16 @@ Static analysis and whitespace checks passed; no new third-party dependencies. T
 Red: `make test`, exit 2: `"_space_observe", referenced from:` followed by `ld: symbol(s) not found for architecture arm64`.
 Green: `make test`, exit 0: `PASS stable normalized observations with complete zero padding` and `All core tests passed`.
 Static analysis and whitespace checks passed; no new third-party dependencies. Observation size, masks, agent-relative views, padding, normalization, invalid indices, and read purity are checked. T009 commit: `bd56d72`.
+
+## T011 — bounded storage and stress
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:288: !space_init(&world, config, 73)` for a NaN reward coefficient.
+Green: `make test` and `make sanitize`, exit 0, both reported:
+
+```text
+PASS invalid configuration and explicit capacity failures
+PASS 1000000 allied decision slots across 22 episodes with deterministic replay
+All core tests passed
+```
+
+`make analyze` and whitespace checks passed. Tested overflowing deadline configuration, invalid frame skip, finite reward constraints, full missile/enemy arrays, paired seeded traces, bounded observations, and terminal accounting. ASan/UBSan reported no errors. No third-party dependency yet. T010 commit: `fc011a5`.

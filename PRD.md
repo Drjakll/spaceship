@@ -145,7 +145,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T008 | P0 | depends: T007 | AC-003 | Implement wave termination accounting; done when: the terminal fixture partitions all scheduled enemies correctly for every termination reason.
 - [x] T009 | P0 | depends: T008 | AC-004 | Emit configurable shared rewards; done when: the event fixture matches every expected reward component across consecutive steps.
 - [x] T010 | P0 | depends: T009 | AC-005 | Encode fixed-size per-agent observations; done when: the schema fixture validates normalized values plus inactive-slot padding.
-- [ ] T011 | P0 | depends: T010 | AC-001 | Enforce bounded simulation storage; done when: the capacity/replay stress suite passes under supported sanitizers.
+- [x] T011 | P0 | depends: T010 | AC-001 | Enforce bounded simulation storage; done when: the capacity/replay stress suite passes under supported sanitizers.
 - [ ] T012 | P1 | depends: T011 | AC-006 | Establish the pinned PufferLib 5.0 dependency build; done when: the real upstream CPU smoke builds at the recorded revision.
 - [ ] T013 | P1 | depends: T012 | AC-006 | Implement native environment buffer integration; done when: a real-upstream harness steps two isolated arenas through the declared interface.
 - [ ] T014 | P1 | depends: T013 | AC-007 | Implement native team episode boundaries; done when: the lifecycle fixture verifies terminal metrics plus reset observations across consecutive episodes.
