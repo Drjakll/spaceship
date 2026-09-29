@@ -15,6 +15,8 @@ struct Env {
     Agent agents[SPACE_MAX_AGENTS];
     int num_agents, tag, boundary_reached, diagnostic_period, diagnostic_step;
     unsigned int rng;
+    long world_decisions, active_decisions, physics_ticks;
+    double kill_reward, escape_reward, damage_reward, death_reward;
     SpaceWorld world;
     void *client;
 };
@@ -71,7 +73,14 @@ void puf_step(Env *env) {
         }
         actions[a].move = (int)move; actions[a].fire = (int)fire;
     }
+    int tick_before=env->world.tick;
+    for(int a=0;a<env->num_agents;++a) env->active_decisions += env->world.ships[a].health>0;
     if (!space_step(&env->world, actions)) { fprintf(stderr, "Spaceship step failed\n"); abort(); }
+    ++env->world_decisions; env->physics_ticks += env->world.tick-tick_before;
+    env->kill_reward += env->world.config.reward_kill*env->world.step_kills;
+    env->escape_reward += env->world.config.reward_escape*env->world.step_escapes;
+    env->damage_reward += env->world.config.reward_damage*env->world.step_damage;
+    env->death_reward += env->world.config.reward_death*env->world.step_deaths;
     space_publish(env);
     if (env->world.terminal) {
         float reward = env->world.reward;

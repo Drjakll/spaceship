@@ -5,8 +5,10 @@ import json
 import pathlib
 import platform
 import subprocess
-from run_manifest import ROOT,sha
+import datetime
+from run_manifest import ROOT,sha,manifest
 from ppo_config import configuration,validate
+from ppo_metrics import parse
 
 def source_identity():
     paths=sorted(p for directory in ('native','scripts','patches','config') for p in (ROOT/directory).rglob('*')
@@ -35,6 +37,7 @@ if __name__=='__main__':
     parser.add_argument('--updates',type=int,default=4)
     parser.add_argument('--seed',type=int,default=11)
     parser.add_argument('--max-seconds',type=int,default=900)
+    parser.add_argument('--run-output',type=pathlib.Path)
     args=parser.parse_args()
     if args.mode=='plan':
         print(json.dumps({'cases':diagnostic_plan(),'executed':False,'updates_per_case':2,'max_seconds':args.max_seconds},indent=2))
@@ -68,6 +71,16 @@ if __name__=='__main__':
         else:
             verify_receipt(json.loads(args.receipt.read_text()),binary_hash,identity)
             config=configuration(args.ships,args.updates,args.seed);validate(config)
+            run_id=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+str(args.seed)
+            output=(args.run_output or ROOT/'artifacts'/run_id).resolve();output.mkdir(parents=True,exist_ok=False)
+            config['base'].update(run_id=run_id,checkpoint_dir=str(output/'checkpoints'),log_dir=str(output/'logs'))
+            (output/'manifest.json').write_text(json.dumps(manifest(config),indent=2)+'\n')
             command=[str(binary),'train','--headless']+[f'--{section}.{key}={value}' for section,items in config.items() for key,value in items.items()]
             command+=['--env.diagnostic_period=0']
-            subprocess.run(command,cwd=backend,check=True,timeout=args.max_seconds)
+            print('Training log:',output/'train.log',flush=True)
+            with (output/'train.log').open('w') as log:
+                subprocess.run(command,cwd=backend,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=args.max_seconds)
+            metrics=parse((output/'train.log').read_text(),validate(config))
+            (output/'metrics.json').write_text(json.dumps(metrics,indent=2)+'\n')
+            counters={key:value for key,value in metrics[-1].items() if key!='native'}
+            (output/'manifest.json').write_text(json.dumps(manifest(config,counters=counters),indent=2)+'\n')
