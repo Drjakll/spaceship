@@ -139,7 +139,7 @@ This is the authoritative task list. Each task receives its own red/green/refact
 - [x] T002 | P0 | depends: T001 | AC-002 | Implement simultaneous fixed-timestep ship movement; done when: the joint-action movement fixture passes for supported team sizes.
 - [x] T003 | P0 | depends: T002 | AC-002 | Implement per-ship missile firing; done when: the projectile ownership/cooldown fixture passes.
 - [x] T004 | P0 | depends: T001 | AC-001 | Implement seeded enemy waves; done when: the fixed-seed variant/trajectory fixture matches its expected schedule.
-- [ ] T005 | P0 | depends: T003, T004 | AC-002 | Resolve missile damage across allied shooters; done when: the combined-damage fixture records exactly one kill with the expected contributors.
+- [x] T005 | P0 | depends: T003, T004 | AC-002 | Resolve missile damage across allied shooters; done when: the combined-damage fixture records exactly one kill with the expected contributors.
 - [ ] T006 | P0 | depends: T005 | AC-002 | Implement contact hazards; done when: the health/cooldown fixture validates enemy contact plus explosion lifecycle.
 - [ ] T007 | P0 | depends: T006 | AC-003 | Account for live enemy escapes; done when: the boundary fixture records each escape exactly once.
 - [ ] T008 | P0 | depends: T007 | AC-003 | Implement wave termination accounting; done when: the terminal fixture partitions all scheduled enemies correctly for every termination reason.

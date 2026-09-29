@@ -95,6 +95,38 @@ static void move_enemies(SpaceWorld *world) {
     }
 }
 
+static void resolve_missiles(SpaceWorld *world) {
+    for (int p = 0; p < SPACE_MAX_PROJECTILES; ++p) {
+        SpaceProjectile *missile = &world->projectiles[p];
+        if (!missile->active) continue;
+        for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+            SpaceEnemy *enemy = &world->enemies[e];
+            if (enemy->phase != 1) continue;
+            float dx = enemy->x - missile->x, dy = enemy->y - missile->y;
+            if (dx*dx + dy*dy > 35*35) continue;
+            float damage = fminf(10, enemy->health);
+            enemy->health -= damage;
+            enemy->contributors |= 1u << missile->owner;
+            world->ships[missile->owner].damage += damage;
+            missile->active = 0;
+            if (enemy->health <= 0) {
+                enemy->phase = 2;
+                enemy->explosion_ticks = 120;
+                enemy->vx = 0;
+                enemy->vy = 50;
+                memset(enemy->contact_cooldown, 0, sizeof(enemy->contact_cooldown));
+                ++world->killed;
+                ++world->step_kills;
+                ++world->ships[missile->owner].kills;
+                for (int a = 0; a < world->config.num_agents; ++a) {
+                    if (a != missile->owner && (enemy->contributors & (1u << a))) ++world->ships[a].assists;
+                }
+            }
+            break;
+        }
+    }
+}
+
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
     if (!world || !actions || world->terminal) return false;
     for (int i = 0; i < world->config.num_agents; ++i) {
@@ -125,6 +157,7 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
         if (world->spawned < world->config.wave_size &&
             world->tick % world->config.spawn_interval_ticks == 0 && !spawn_enemy(world)) return false;
         move_enemies(world);
+        resolve_missiles(world);
     }
     return true;
 }

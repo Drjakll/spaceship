@@ -120,11 +120,36 @@ static void test_waves(void) {
     puts("PASS deterministic enemy wave schedule and bounded paths");
 }
 
+static void test_shared_damage(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    CHECK(space_init(&world, config, 73));
+    world.spawned = 1;
+    world.enemies[0] = (SpaceEnemy){.phase=1, .type=1, .id=1, .x=500, .y=500, .health=15};
+    world.projectiles[0] = (SpaceProjectile){1, 0, 500, 501, 0};
+    world.projectiles[1] = (SpaceProjectile){1, 1, 500, 502, 0};
+    world.projectiles[2] = (SpaceProjectile){1, 2, 500, 503, 0};
+    CHECK(space_step(&world, actions));
+    CHECK(world.killed == 1 && world.step_kills == 1);
+    CHECK(world.enemies[0].health == 0 && world.enemies[0].phase == 2);
+    CHECK(world.ships[0].damage == 10 && world.ships[1].damage == 5);
+    CHECK(world.ships[0].assists == 1 && world.ships[1].kills == 1);
+    CHECK(world.ships[2].damage == 0);
+    CHECK(!world.projectiles[0].active && !world.projectiles[1].active);
+    CHECK(world.projectiles[2].active);
+    CHECK(space_step(&world, actions));
+    CHECK(world.killed == 1 && world.ships[1].kills == 1);
+    puts("PASS shared damage with single kill and assist attribution");
+}
+
 int main(void) {
     test_reset();
     test_movement();
     test_firing();
     test_waves();
+    test_shared_damage();
     puts("All core tests passed");
     return 0;
 }

@@ -43,3 +43,9 @@ Green: `make test`, exit 0: `PASS independent firing cooldowns and projectile ow
 Red: `make test`, exit 2: `FAIL tests/test_core.c:106: a.spawned == 1 && a.enemies[0].phase == 1`.
 Green: `make test`, exit 0: `PASS deterministic enemy wave schedule and bounded paths` and `All core tests passed`.
 `make analyze` and whitespace checks passed; dependency review found no new external code. T003 commit: `4f56aad`.
+
+## T005 — cooperative damage
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:135: world.killed == 1 && world.step_kills == 1`.
+Green: `make test`, exit 0: `PASS shared damage with single kill and assist attribution` and `All core tests passed`.
+Static analysis and whitespace checks passed; no new third-party dependencies. T004 commit: `73873b0`.
