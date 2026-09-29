@@ -63,9 +63,40 @@ static void test_movement(void) {
     puts("PASS simultaneous bounded movement for 1-8 ships");
 }
 
+static void test_firing(void) {
+    SpaceWorld world;
+    SpaceConfig config = space_default_config();
+    config.frame_skip = 1;
+    SpaceAction actions[SPACE_MAX_AGENTS] = {{0}};
+    actions[0].fire = actions[1].fire = 1;
+    CHECK(space_init(&world, config, 73));
+    CHECK(space_step(&world, actions));
+    CHECK(world.projectiles[0].active && world.projectiles[0].owner == 0);
+    CHECK(world.projectiles[1].active && world.projectiles[1].owner == 1);
+    CHECK(world.projectiles[0].x == world.ships[0].x);
+    CHECK(world.projectiles[0].y < 850);
+    CHECK(world.ships[0].cooldown == 30);
+    for (int i = 0; i < 29; ++i) CHECK(space_step(&world, actions));
+    CHECK(!world.projectiles[2].active);
+    CHECK(space_step(&world, actions));
+    CHECK(world.projectiles[2].active && world.projectiles[2].owner == 0);
+    CHECK(world.projectiles[3].active && world.projectiles[3].owner == 1);
+    world.ships[0].health = 0;
+    world.ships[0].cooldown = 0;
+    actions[1].fire = 0;
+    CHECK(space_step(&world, actions));
+    CHECK(!world.projectiles[4].active);
+    CHECK(world.ships[1].health == 50);
+    world.projectiles[0].y = -11;
+    CHECK(space_step(&world, actions));
+    CHECK(!world.projectiles[0].active);
+    puts("PASS independent firing cooldowns and projectile ownership");
+}
+
 int main(void) {
     test_reset();
     test_movement();
+    test_firing();
     puts("All core tests passed");
     return 0;
 }

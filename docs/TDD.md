@@ -31,3 +31,9 @@ All core tests passed
 Red: `make test`, exit 2: `"_space_step", referenced from:` followed by `ld: symbol(s) not found for architecture arm64`.
 Green: `make test`, exit 0: `PASS simultaneous bounded movement for 1-8 ships` and `All core tests passed`.
 `make analyze` and `git diff --check` passed. Dependency review: no external libraries added; system libm supplies normalization/bounds. T001 commit: `dbda111`.
+
+## T003 — owned missiles
+
+Red: `make test`, exit 2: `FAIL tests/test_core.c:74: world.projectiles[0].active && world.projectiles[0].owner == 0`.
+Green: `make test`, exit 0: `PASS independent firing cooldowns and projectile ownership` and `All core tests passed`.
+`make analyze` and `git diff --check` passed; dependency review found no new third-party dependencies. T002 commit: `dbb8beb`.

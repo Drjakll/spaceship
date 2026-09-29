@@ -39,6 +39,19 @@ bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed) {
     return true;
 }
 
+static bool fire_missile(SpaceWorld *world, int owner) {
+    SpaceShip *ship = &world->ships[owner];
+    for (int i = 0; i < SPACE_MAX_PROJECTILES; ++i) {
+        SpaceProjectile *missile = &world->projectiles[i];
+        if (missile->active) continue;
+        *missile = (SpaceProjectile){1, owner, ship->x, ship->y, 30};
+        ship->cooldown = 30;
+        return true;
+    }
+    world->overflow = 1;
+    return false;
+}
+
 bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
     if (!world || !actions || world->terminal) return false;
     for (int i = 0; i < world->config.num_agents; ++i) {
@@ -55,6 +68,15 @@ bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) 
             float speed = move >= SPACE_UP_LEFT ? 5.0f / sqrtf(2.0f) : 5.0f;
             ship->x = fminf(975, fmaxf(25, ship->x + speed * dx[move]));
             ship->y = fminf(975, fmaxf(25, ship->y + speed * dy[move]));
+            if (ship->cooldown > 0) --ship->cooldown;
+            if (actions[i].fire && ship->cooldown == 0 && !fire_missile(world, i)) return false;
+        }
+        for (int i = 0; i < SPACE_MAX_PROJECTILES; ++i) {
+            SpaceProjectile *missile = &world->projectiles[i];
+            if (!missile->active) continue;
+            missile->vy += 300 * SPACE_DT;
+            missile->y -= missile->vy * SPACE_DT;
+            if (missile->y < -10) missile->active = 0;
         }
         ++world->tick;
     }
