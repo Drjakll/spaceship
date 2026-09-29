@@ -112,3 +112,7 @@ Red: `python3 scripts/check_external.py --pufferlib-root /private/tmp/spaceship-
 ## T025 — lossless reward transport
 
 The public helper first reproduced the inspected upstream [-1,1] transport clamp. Red: `clang -std=c11 -Wall -Wextra -Werror -pedantic -Inative tests/test_ppo.c -lm -o build/test_ppo && ./build/test_ppo`, exit 1: `space_learner_reward(-2) / space_learner_reward(1) == -2`. Green: `make test`, exit 0: `PASS lossless reward transport retains simultaneous events and escape ratio`. Identity scaling preserves raw reward ratios; T027 wires this host/device helper into interior and tail collection. Static/whitespace checks passed, no dependencies added. T014 commit: `6c8fd5e`.
+
+## T026 — complete GAE targets
+
+Red: `make build/test_ppo`, exit 2: undefined `_space_gae` and `_space_gae_delta`. Green: `make test`, exit 0: `PASS independent GAE oracle before/on/after boundaries for every team size`. Hand-computed returns use gamma=0.5, lambda=1, a -2 reward on the rollout tail, bootstrap value 5, a following +3 reward, and true terminal suppression. Consecutive one-step episodes are checked for 1–8 allied slots. The same delta helper will be used by the native patch; this is CPU mathematical evidence, not a CUDA execution claim. Static/whitespace checks passed, dependencies unchanged. T025 commit: `bc4609b`.
