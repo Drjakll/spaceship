@@ -7,13 +7,14 @@ struct Ammo {
     Vector2 *velocity;
     float acceleration;
     float size_r;
+    int belongs_to;
 
 } ;
 
 struct Weapon {
     float cooldown; //time delay before next shot is allowed
     float cd_remain;
-    Ammo* (*Shoot)(float, Vector2);
+    Ammo* (*Shoot)(float, Vector2, int);
 
 };
 
@@ -62,7 +63,7 @@ void AccelerateZigZagVPath(Vector2 *pos, float deltaTime, Vector2 *velocity, flo
 
     int c = (int)(floor(pos->x)) % 350;
 
-    if( c < 3 && c > 0 ){
+    if( c < 10 && c > 0 ){
         velocity->x *= -1;
     }
 
@@ -159,7 +160,7 @@ Enemy *Aliencraft_Type_3(){
 }
 
 
-Ammo* ShootMissile(float cooldown, Vector2 init_pos){
+Ammo* ShootMissile(float cooldown, Vector2 init_pos, int belongs_to){
 
     if(cooldown > 0){
         return NULL;
@@ -180,6 +181,7 @@ Ammo* ShootMissile(float cooldown, Vector2 init_pos){
     ammo->size_r = MISSILE_RADIUS;
     ammo->velocity = init_vel;
     ammo->acceleration = 300.0f;
+    ammo->belongs_to = belongs_to;
 
     return ammo;
 }

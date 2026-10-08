@@ -17,7 +17,7 @@ typedef struct Data Data;
 typedef struct Data_Node Data_Node;
 typedef struct Data_List Data_List;
 
-int score = 0;
+int score[NUM_OF_AGENTS] = {0};
 int frame_count = 0;
 
 Enemy_Collections *enemies = NULL;
@@ -45,6 +45,6 @@ Image ammo_image;
 
 Texture ammo_model;
 
-Spaceship *spaceship;
+Spaceship *spaceships[NUM_OF_AGENTS];
 
 Projectile_Data_List *current_projectile_data_list = NULL;

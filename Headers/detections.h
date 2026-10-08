@@ -48,7 +48,7 @@ bool Detect_Enemy_Collisions(Enemy *enemy, double deltaTime){
             enemy->attack_cooldown = EXPLOSION_DMG_COOLDOWN;
             enemy->dead = true;
 
-            score += enemy->points_worth;
+            score[current_ammo->belongs_to] += enemy->points_worth;
         }
 
         return true;
@@ -98,7 +98,7 @@ bool Update_Enemy_Attack_Cooldown(Enemy *enemy, double deltaTime){
     return false;
 }
 
-bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
+bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime, Spaceship *spaceship){
 
     float dist = calc_mag(spaceship->position, enemy->position);
 

@@ -28,3 +28,6 @@
 #define LEFT  0b00100  //4
 #define RIGHT 0b01000  //8
 #define SHOOT 0b10000  //16
+#define NO_ACTION 0b0  //0
+
+#define NUM_OF_AGENTS 3

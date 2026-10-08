@@ -6,12 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "Headers/global_declarations.h"
 #include "Headers/macros.h"
+#include "Headers/global_declarations.h"
 #include "Headers/objects.h"
 #include "Headers/data.h"
 #include "Headers/object_collections.h"
 #include "Headers/detections.h"
+#include "Headers/self_control.h"
 
 
 //If you move left + up, it will move faster versus moving just left or up. This normalize it.
@@ -30,12 +31,7 @@ Vector2 Clamp(Vector2 delta, float speed){
     return delta;
 }
 
-
-int main(){
-
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Test");
-
-    data_list = calloc(1, sizeof(Data_List));
+void Initialize_Assets(){
 
     enemy_img_1 = LoadImage("Pictures/aliencraft1.png");
     ImageResize(&enemy_img_1, ENEMY_RADIUS * 2, ENEMY_RADIUS * 2);
@@ -57,6 +53,80 @@ int main(){
     ImageResize(&explosion_img, EXPLOSION_RADIUS * 2, EXPLOSION_RADIUS * 2);
 
     explosion_model = LoadTextureFromImage(explosion_img);
+}
+
+void Initialize_Agents(){
+
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+        spaceships[i] = Create_Spaceship();
+
+        spaceships[i]->position = (Vector2){400 + 50*i, 700};
+    }
+
+}
+
+void Control_Spaceship(int i, int control, double delta_time ){
+
+    Spaceship *spaceship = spaceships[i];
+
+    Vector2 delta = {0,0};
+
+    if((control & LEFT) == LEFT){
+        delta.x += -1;
+    }
+
+    if((control & RIGHT) == RIGHT){
+        delta.x += 1;
+    }
+
+    if((control & UP) == UP){
+        delta.y += -1;
+    }
+
+    if((control & DOWN) == DOWN){
+        delta.y += 1;
+    }
+
+    delta = Clamp(delta, spaceship->speed);
+
+    spaceship->position.x += delta.x * delta_time;
+    spaceship->position.y += delta.y * delta_time;
+
+    if(spaceship->position.x > WINDOW_WIDTH - SPACESHIP_RADIUS){
+        spaceship->position.x = WINDOW_WIDTH - SPACESHIP_RADIUS;
+    } else if(spaceship->position.x < 0){
+        spaceship->position.x = 0;
+    }
+    
+    if(spaceship->position.y > WINDOW_HEIGHT - SPACESHIP_RADIUS){
+        spaceship->position.y = WINDOW_HEIGHT - SPACESHIP_RADIUS;
+    } else if(spaceship->position.y < 0){
+        spaceship->position.y = 0;
+    }
+
+    spaceship->weapon->cd_remain -= delta_time;
+
+    if((control & SHOOT) == SHOOT){
+
+        Ammo *ammo = spaceship->weapon->Shoot(spaceship->weapon->cd_remain, spaceship->position, i);
+
+        if(ammo){
+            spaceship->weapon->cd_remain = spaceship->weapon->cooldown;
+            Add_Projectile(ammo);
+        }
+    }
+    
+}
+
+int main(){
+
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Spaceship");
+
+    //data_list = calloc(1, sizeof(Data_List));
+
+    Initialize_Assets();
+
+    SetTargetFPS(120);
 
     int enemy_variant_count = 3;
 
@@ -70,20 +140,16 @@ int main(){
     projectiles = calloc(1, sizeof(Projectile_Collections));
     enemies = calloc(1, sizeof(Enemy_Collections));
 
-    SetTargetFPS(120);
-
     //The enemy spawn_timer
     float spawn_timer = ENEMY_SPAWN_TIMER;
 
     double accumulated_time = 0;
 
-    spaceship = Create_Spaceship();
-
-    spaceship->position = (Vector2){400, 700};
-
     double last_time = GetTime();
 
     Font font = LoadFont("Fonts/NotoSans-VariableFont.ttf");
+
+    Initialize_Agents();
 
     while (!WindowShouldClose()) {
 
@@ -93,62 +159,39 @@ int main(){
 
         spawn_timer -= delta_time;
 
-        Vector2 delta = {0,0};
+        int keys_down[NUM_OF_AGENTS];
 
-        int keys_down = 0;
-
+        /*
         if(IsKeyDown(KEY_A)){
-            delta.x = -1;
             keys_down |= LEFT;
+        }
 
-        } 
-        else if(IsKeyDown(KEY_D)){
-            delta.x = 1;
+        if(IsKeyDown(KEY_D)){
             keys_down |= RIGHT;
         }
 
         if(IsKeyDown(KEY_W)){
-            delta.y = -1;
             keys_down |= UP;
         }
-        else if(IsKeyDown(KEY_S)){
-            delta.y = 1;
-            keys_down |= DOWN;
-        }
-
-
-        delta = Clamp(delta, spaceship->speed);
-
-        spaceship->position.x += delta.x * delta_time;
-        spaceship->position.y += delta.y * delta_time;
-
-        if(spaceship->position.x > WINDOW_WIDTH - SPACESHIP_RADIUS){
-            spaceship->position.x = WINDOW_WIDTH - SPACESHIP_RADIUS;
-        } else if(spaceship->position.x < 0){
-            spaceship->position.x = 0;
-        }
         
-        if(spaceship->position.y > WINDOW_HEIGHT - SPACESHIP_RADIUS){
-            spaceship->position.y = WINDOW_HEIGHT - SPACESHIP_RADIUS;
-        } else if(spaceship->position.y < 0){
-            spaceship->position.y = 0;
+        if(IsKeyDown(KEY_S)){
+            keys_down |= DOWN;
         }
 
         if(IsKeyPressed(KEY_O)){
 
             keys_down |= SHOOT;
 
-            Ammo *ammo = spaceship->weapon->Shoot(spaceship->weapon->cd_remain, spaceship->position);
+        }
+        */
 
-        
-            if(ammo){
-                spaceship->weapon->cd_remain = spaceship->weapon->cooldown;
-                Add_Projectile(ammo);
-            }
+        for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+            keys_down[i] = GetRandomValue(0, 0b11111);
+
+            Control_Spaceship(i, keys_down[i], delta_time);
 
         }
-
-        spaceship->weapon->cd_remain -= delta_time;
 
         last_time = this_time;
 
@@ -170,7 +213,12 @@ int main(){
 
             ClearBackground(BLACK);
 
-            DrawTexture(spaceship->model, spaceship->position.x, spaceship->position.y, WHITE);
+            for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+                Spaceship *spaceship = spaceships[i];
+
+                DrawTexture(spaceship->model, spaceship->position.x, spaceship->position.y, WHITE);
+            }
 
             Iterate_Projectiles(Detect_Projectile_Collisions, delta_time);
 
@@ -184,13 +232,15 @@ int main(){
             char health_text[25];
             char time_elapsed[25];
 
-            snprintf(score_text, 100, "Total Score: %d", score);
+            for(int i = 0; i < NUM_OF_AGENTS; i++){
+                snprintf(score_text, 100, "Total Score: %d", score[i]);
 
-            DrawTextEx(font, score_text, (Vector2){50,50}, 24, 1, WHITE);
+                DrawTextEx(font, score_text, (Vector2){50, 50 + 50*i}, 24, 1, WHITE);
+            }
 
-            snprintf(health_text, 25, "Health: %f", spaceship->health);
+            //snprintf(health_text, 25, "Health: %f", spaceship->health);
 
-            DrawTextEx(font, health_text, (Vector2){WINDOW_WIDTH - 300, 50}, 24, 1, WHITE);
+            //DrawTextEx(font, health_text, (Vector2){WINDOW_WIDTH - 300, 50}, 24, 1, WHITE);
 
             snprintf(time_elapsed, 25, "Time: %d", (GAME_TIME - (int)accumulated_time));
 
@@ -202,6 +252,7 @@ int main(){
         frame_count++;
 
         //Collects data
+        /*
         accumulated_time += delta_time * 1000;
 
         if(frame_count % 4 != 0 && keys_down == 0){
@@ -246,8 +297,10 @@ int main(){
         if(GAME_TIME - (int)(accumulated_time) < 0){
             break;
         }
+        */
     }
 
+    /*
     char* json_str = Iterate_Data(*data_list, Convert_Data_To_String);
 
     FILE *file = fopen("Game_Data/game_snapshots.json", "w");
@@ -260,6 +313,7 @@ int main(){
     fputs(json_str, file);
 
     fclose(file);
+    */
 
     UnloadImage(enemy_img_1);
     UnloadImage(enemy_img_2);
@@ -272,7 +326,12 @@ int main(){
     UnloadTexture(enemy_model_3);
     UnloadTexture(ammo_model);
     UnloadTexture(explosion_model);
-    UnloadTexture(spaceship->model);
+
+    for(int i =0; i < NUM_OF_AGENTS; i++){
+        Spaceship *spaceship = spaceships[i];
+
+        UnloadTexture(spaceship->model);
+    }
 
     UnloadFont(font);
 
