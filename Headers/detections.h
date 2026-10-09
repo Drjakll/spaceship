@@ -33,7 +33,31 @@ float calc_mag(Vector2 v1, Vector2 v2){
 
 }
 
+float* Distance_Hori_Vert(Enemy enemy, Spaceship spaceship) {
 
+    Vector2 e_loc = enemy.position;
+    Vector2 s_loc = spaceship.position;
+
+    float* differences = malloc(sizeof(float)*2);
+
+    differences[0] = s_loc.x - e_loc.x;
+    differences[1] = s_loc.y - e_loc.y;
+
+    return differences;
+}
+
+//Detecting each enemy information and calculate certain data
+
+bool Detect_Enemy_Locations(Enemy *enemy, double deltaTime){
+
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+        
+
+    }
+
+    return false;
+}
 
 bool Detect_Enemy_Collisions(Enemy *enemy, double deltaTime){
 
@@ -121,14 +145,4 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime, Spaceship *space
     }
 
     return false;
-}
-
-bool Detect_Enemy_Locations(Enemy *enemy, double deltaTime){
-
-    for(int i = 0; i < NUM_OF_AGENTS; i++){
-
-        
-
-    }
-
 }
