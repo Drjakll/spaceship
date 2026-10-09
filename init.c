@@ -8,11 +8,11 @@
 
 #include "Headers/macros.h"
 #include "Headers/global_declarations.h"
+#include "Headers/self_control.h"
 #include "Headers/objects.h"
 #include "Headers/data.h"
 #include "Headers/object_collections.h"
 #include "Headers/detections.h"
-#include "Headers/self_control.h"
 
 
 //If you move left + up, it will move faster versus moving just left or up. This normalize it.

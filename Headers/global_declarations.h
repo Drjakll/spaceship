@@ -16,6 +16,7 @@ typedef struct Spaceship_Data Spaceship_Data;
 typedef struct Data Data;
 typedef struct Data_Node Data_Node;
 typedef struct Data_List Data_List;
+typedef struct Spaceship_Control_Probability;
 
 int score[NUM_OF_AGENTS] = {0};
 int frame_count = 0;
@@ -48,3 +49,5 @@ Texture ammo_model;
 Spaceship *spaceships[NUM_OF_AGENTS];
 
 Projectile_Data_List *current_projectile_data_list = NULL;
+
+long ammo_index = 0;

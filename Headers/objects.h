@@ -8,7 +8,7 @@ struct Ammo {
     float acceleration;
     float size_r;
     int belongs_to;
-
+    long id;
 } ;
 
 struct Weapon {

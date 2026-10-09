@@ -1,9 +1,16 @@
+long Generate_Projectile_Index() {
+
+    return ++ammo_index;
+}
+
 //Add a projectile to the linked list
 void Add_Projectile(Ammo *ammo){
 
     if(!ammo){
         return;
     }
+
+    ammo->id = Generate_Projectile_Index();
 
     //This insert it to the linked list, this is from object_collection.h
     Insert_Projectile(ammo);
@@ -114,4 +121,14 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime, Spaceship *space
     }
 
     return false;
+}
+
+bool Detect_Enemy_Locations(Enemy *enemy, double deltaTime){
+
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+        
+
+    }
+
 }
