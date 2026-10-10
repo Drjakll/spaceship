@@ -1,0 +1,296 @@
+#include "spaceship_core.h"
+#include <string.h>
+#include <math.h>
+#include <limits.h>
+
+SpaceConfig space_default_config(void) {
+    SpaceConfig config = {0};
+    config.num_agents = 3;
+    config.wave_size = 200;
+    config.spawn_interval_ticks = 108;
+    config.drain_ticks = 1800;
+    config.frame_skip = 4;
+    config.reward_kill = 1.0f;
+    config.reward_escape = -2.0f;
+    config.reward_damage = -0.02f;
+    config.reward_death = -1.0f;
+    return config;
+}
+
+void space_reset(SpaceWorld *world, uint32_t seed) {
+    SpaceConfig config = world->config;
+    memset(world, 0, sizeof(*world));
+    world->config = config;
+    world->rng = seed ? seed : UINT32_C(0x9e3779b9);
+    for (int i = 0; i < config.num_agents; ++i) {
+        world->ships[i].x = SPACE_WIDTH * (float)(i + 1) / (float)(config.num_agents + 1);
+        world->ships[i].y = 850.0f;
+        world->ships[i].health = 50.0f;
+    }
+}
+
+bool space_init(SpaceWorld *world, SpaceConfig config, uint32_t seed) {
+    if (!world || config.num_agents < 1 || config.num_agents > SPACE_MAX_AGENTS ||
+        config.wave_size < 1 || config.spawn_interval_ticks < 1 ||
+        config.drain_ticks < 1 || config.frame_skip < 1 || config.frame_skip > 120 ||
+        (int64_t)config.wave_size * config.spawn_interval_ticks + config.drain_ticks > INT_MAX ||
+        !isfinite(config.reward_kill) || !isfinite(config.reward_escape) ||
+        !isfinite(config.reward_damage) || !isfinite(config.reward_death) ||
+        fabsf(config.reward_kill) > 1e6f || fabsf(config.reward_escape) > 1e6f ||
+        fabsf(config.reward_damage) > 1e6f || fabsf(config.reward_death) > 1e6f) {
+        return false;
+    }
+    world->config = config;
+    space_reset(world, seed);
+    return true;
+}
+
+static bool capacity_error(SpaceWorld *world) {
+    world->overflow = world->terminal = 1;
+    world->terminal_reason = SPACE_ERROR;
+    world->unresolved = world->spawned - world->killed - world->escaped;
+    world->unspawned = world->config.wave_size - world->spawned;
+    return false;
+}
+
+static bool fire_missile(SpaceWorld *world, int owner) {
+    SpaceShip *ship = &world->ships[owner];
+    for (int i = 0; i < SPACE_MAX_PROJECTILES; ++i) {
+        SpaceProjectile *missile = &world->projectiles[i];
+        if (missile->active) continue;
+        *missile = (SpaceProjectile){1, owner, ship->x, ship->y, 30};
+        ship->cooldown = 30;
+        return true;
+    }
+    return capacity_error(world);
+}
+
+static uint32_t space_random(SpaceWorld *world) {
+    uint32_t value = world->rng;
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    world->rng = value;
+    return value;
+}
+
+static bool spawn_enemy(SpaceWorld *world) {
+    static const float health[3] = {10, 15, 25};
+    static const float speed[3] = {100, 150, 100};
+    for (int i = 0; i < SPACE_MAX_ENEMIES; ++i) {
+        SpaceEnemy *enemy = &world->enemies[i];
+        if (enemy->phase) continue;
+        memset(enemy, 0, sizeof(*enemy));
+        enemy->phase = 1;
+        enemy->type = (int)(space_random(world) % 3);
+        enemy->id = ++world->spawned;
+        enemy->x = 25.0f + (float)(space_random(world) % 951);
+        enemy->y = -25;
+        enemy->vx = speed[enemy->type];
+        enemy->vy = 10;
+        enemy->health = health[enemy->type];
+        return true;
+    }
+    return capacity_error(world);
+}
+
+static void move_enemies(SpaceWorld *world) {
+    static const float acceleration[3] = {75, 50, 20};
+    for (int i = 0; i < SPACE_MAX_ENEMIES; ++i) {
+        SpaceEnemy *enemy = &world->enemies[i];
+        if (enemy->phase != 1) continue;
+        enemy->vy += acceleration[enemy->type] * SPACE_DT;
+        enemy->y += enemy->vy * SPACE_DT;
+        enemy->x += enemy->vx * SPACE_DT;
+        if (enemy->x > 975) { enemy->x = 1950 - enemy->x; enemy->vx = -fabsf(enemy->vx); }
+        if (enemy->x < 25) { enemy->x = 50 - enemy->x; enemy->vx = fabsf(enemy->vx); }
+    }
+}
+
+static void resolve_missiles(SpaceWorld *world) {
+    for (int p = 0; p < SPACE_MAX_PROJECTILES; ++p) {
+        SpaceProjectile *missile = &world->projectiles[p];
+        if (!missile->active) continue;
+        for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+            SpaceEnemy *enemy = &world->enemies[e];
+            if (enemy->phase != 1) continue;
+            float dx = enemy->x - missile->x, dy = enemy->y - missile->y;
+            if (dx*dx + dy*dy > 35*35) continue;
+            float damage = fminf(10, enemy->health);
+            enemy->health -= damage;
+            enemy->contributors |= 1u << missile->owner;
+            world->ships[missile->owner].damage += damage;
+            missile->active = 0;
+            if (enemy->health <= 0) {
+                enemy->phase = 2;
+                enemy->explosion_ticks = 120;
+                enemy->vx = 0;
+                enemy->vy = 50;
+                memset(enemy->contact_cooldown, 0, sizeof(enemy->contact_cooldown));
+                ++world->killed;
+                world->score += 2 << enemy->type;
+                ++world->step_kills;
+                ++world->ships[missile->owner].kills;
+                for (int a = 0; a < world->config.num_agents; ++a) {
+                    if (a != missile->owner && (enemy->contributors & (1u << a))) ++world->ships[a].assists;
+                }
+            }
+            break;
+        }
+    }
+}
+
+static void resolve_hazards(SpaceWorld *world) {
+    static const float damages[3] = {5, 7, 10};
+    static const int cooldowns[3] = {120, 144, 168};
+    for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+        SpaceEnemy *enemy = &world->enemies[e];
+        if (!enemy->phase) continue;
+        float radius = enemy->phase == 2 ? 75.0f : 50.0f;
+        for (int a = 0; a < world->config.num_agents; ++a) {
+            if (enemy->contact_cooldown[a] > 0) --enemy->contact_cooldown[a];
+            SpaceShip *ship = &world->ships[a];
+            if (ship->health <= 0 || enemy->contact_cooldown[a] > 0) continue;
+            float dx = enemy->x - ship->x, dy = enemy->y - ship->y;
+            if (dx*dx + dy*dy > radius*radius) continue;
+            float damage = fminf(ship->health, enemy->phase == 2 ? 1 : damages[enemy->type]);
+            ship->health -= damage;
+            world->step_damage += damage;
+            if (ship->health == 0) ++world->step_deaths;
+            enemy->contact_cooldown[a] = enemy->phase == 2 ? 18 : cooldowns[enemy->type];
+        }
+        if (enemy->phase == 2) {
+            enemy->y += 50 * SPACE_DT;
+            if (--enemy->explosion_ticks <= 0 || enemy->y > 1050) enemy->phase = 0;
+        }
+    }
+}
+
+static void resolve_escapes(SpaceWorld *world) {
+    for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+        SpaceEnemy *enemy = &world->enemies[e];
+        if (enemy->phase == 1 && enemy->y > SPACE_HEIGHT + 25) {
+            enemy->phase = 0;
+            ++world->escaped;
+            ++world->step_escapes;
+        }
+    }
+}
+
+static void finish_episode(SpaceWorld *world) {
+    int alive = 0;
+    for (int a = 0; a < world->config.num_agents; ++a) alive += world->ships[a].health > 0;
+    int deadline = world->config.wave_size * world->config.spawn_interval_ticks + world->config.drain_ticks;
+    if (!alive) world->terminal_reason = SPACE_DEFEAT;
+    else if (world->killed + world->escaped == world->config.wave_size) world->terminal_reason = SPACE_WAVE_COMPLETE;
+    else if (world->tick >= deadline) world->terminal_reason = SPACE_DEADLINE;
+    if (world->terminal_reason) {
+        world->terminal = 1;
+        world->unresolved = world->spawned - world->killed - world->escaped;
+        world->unspawned = world->config.wave_size - world->spawned;
+    }
+}
+
+float space_failure_fraction(const SpaceWorld *world) {
+    return 1.0f - (float)world->killed / (float)world->config.wave_size;
+}
+
+bool space_step(SpaceWorld *world, const SpaceAction actions[SPACE_MAX_AGENTS]) {
+    if (!world || !actions || world->terminal) return false;
+    for (int i = 0; i < world->config.num_agents; ++i) {
+        if (actions[i].move < 0 || actions[i].move > 8 ||
+            actions[i].fire < 0 || actions[i].fire > 1) return false;
+    }
+    world->step_kills = world->step_escapes = world->step_deaths = 0;
+    world->step_damage = world->reward = 0;
+    static const int dx[9] = {0, 0, 0, -1, 1, -1, 1, -1, 1};
+    static const int dy[9] = {0, -1, 1, 0, 0, -1, -1, 1, 1};
+    for (int tick = 0; tick < world->config.frame_skip; ++tick) {
+        for (int i = 0; i < world->config.num_agents; ++i) {
+            SpaceShip *ship = &world->ships[i];
+            if (ship->health <= 0) continue;
+            int move = actions[i].move;
+            float speed = move >= SPACE_UP_LEFT ? 5.0f / sqrtf(2.0f) : 5.0f;
+            ship->x = fminf(975, fmaxf(25, ship->x + speed * dx[move]));
+            ship->y = fminf(975, fmaxf(25, ship->y + speed * dy[move]));
+            if (ship->cooldown > 0) --ship->cooldown;
+            if (actions[i].fire && ship->cooldown == 0 && !fire_missile(world, i)) return false;
+        }
+        for (int i = 0; i < SPACE_MAX_PROJECTILES; ++i) {
+            SpaceProjectile *missile = &world->projectiles[i];
+            if (!missile->active) continue;
+            missile->vy += 300 * SPACE_DT;
+            missile->y -= missile->vy * SPACE_DT;
+            if (missile->y < -10) missile->active = 0;
+        }
+        ++world->tick;
+        if (world->spawned < world->config.wave_size &&
+            world->tick % world->config.spawn_interval_ticks == 0 && !spawn_enemy(world)) return false;
+        move_enemies(world);
+        resolve_missiles(world);
+        resolve_hazards(world);
+        resolve_escapes(world);
+        finish_episode(world);
+        if (world->terminal) break;
+    }
+    world->reward = world->config.reward_kill * world->step_kills
+        + world->config.reward_escape * world->step_escapes
+        + world->config.reward_damage * world->step_damage
+        + world->config.reward_death * world->step_deaths;
+    world->episode_return += world->reward;
+    return true;
+}
+
+bool space_observe(const SpaceWorld *world, int agent, float observation[SPACE_OBSERVATION_SIZE]) {
+    if (!world || !observation || agent < 0 || agent >= world->config.num_agents) return false;
+    memset(observation, 0, sizeof(float) * SPACE_OBSERVATION_SIZE);
+    const SpaceShip *self = &world->ships[agent];
+    int deadline = world->config.wave_size * world->config.spawn_interval_ticks + world->config.drain_ticks;
+    observation[0] = self->x / SPACE_WIDTH;
+    observation[1] = self->y / SPACE_HEIGHT;
+    observation[2] = agent / 7.0f;
+    observation[3] = world->config.num_agents / 8.0f;
+    observation[4] = fmaxf(0, 1.0f - (float)world->tick / deadline);
+    observation[5] = (world->config.spawn_interval_ticks - world->tick % world->config.spawn_interval_ticks)
+        / (float)world->config.spawn_interval_ticks;
+    observation[6] = (world->config.wave_size - world->spawned) / (float)world->config.wave_size;
+    observation[7] = world->killed / (float)world->config.wave_size;
+    observation[8] = world->escaped / (float)world->config.wave_size;
+    observation[9] = world->terminal ? 1 : 0;
+    for (int a = 0; a < world->config.num_agents; ++a) {
+        const SpaceShip *ship = &world->ships[a];
+        float *slot = observation + SPACE_SHIP_OFFSET + a * SPACE_SHIP_FEATURES;
+        slot[0] = 1;
+        slot[1] = ship->health > 0;
+        slot[2] = (ship->x - self->x) / SPACE_WIDTH;
+        slot[3] = (ship->y - self->y) / SPACE_HEIGHT;
+        slot[4] = ship->health / 50.0f;
+        slot[5] = ship->cooldown / 30.0f;
+    }
+    for (int e = 0; e < SPACE_MAX_ENEMIES; ++e) {
+        const SpaceEnemy *enemy = &world->enemies[e];
+        if (!enemy->phase) continue;
+        float *slot = observation + SPACE_ENEMY_OFFSET + e * SPACE_ENEMY_FEATURES;
+        slot[0] = 1;
+        slot[1] = enemy->phase == 2;
+        slot[2] = (enemy->x - self->x) / SPACE_WIDTH;
+        slot[3] = (enemy->y - self->y) / 1100.0f;
+        slot[4] = enemy->vx / 150.0f;
+        slot[5] = enemy->vy / 1000.0f;
+        slot[6] = enemy->health / 25.0f;
+        slot[7 + enemy->type] = 1;
+        slot[10] = enemy->explosion_ticks / 120.0f;
+        for (int a = 0; a < world->config.num_agents; ++a) slot[11+a] = enemy->contact_cooldown[a] / 168.0f;
+    }
+    for (int p = 0; p < SPACE_MAX_PROJECTILES; ++p) {
+        const SpaceProjectile *missile = &world->projectiles[p];
+        if (!missile->active) continue;
+        float *slot = observation + SPACE_PROJECTILE_OFFSET + p * SPACE_PROJECTILE_FEATURES;
+        slot[0] = 1;
+        slot[1] = (missile->x - self->x) / SPACE_WIDTH;
+        slot[2] = (missile->y - self->y) / 1100.0f;
+        slot[3] = missile->vy / 1000.0f;
+        slot[4] = missile->owner / 7.0f;
+    }
+    return true;
+}
