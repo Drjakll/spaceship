@@ -1,0 +1,35 @@
+#ifndef SPACESHIP_MACROS_H
+#define SPACESHIP_MACROS_H
+
+#define ENEMY_RADIUS 25.0f
+#define SPACESHIP_RADIUS 25.0f
+#define MISSILE_RADIUS 10.0f
+#define EXPLOSION_RADIUS 50.0f
+#define WINDOW_WIDTH 1000
+#define WINDOW_HEIGHT 1000
+
+#define ENEMY_TYPE_1 "Enemy_1"
+#define ENEMY_TYPE_1_ATTACK_CD 1
+#define ENEMY_TYPE_2 "Enemy_2"
+#define ENEMY_TYPE_2_ATTACK_CD 1.2
+#define ENEMY_TYPE_3 "Enemy_3"
+#define ENEMY_TYPE_3_ATTACK_CD 1.4
+
+#define SPACESHIP_HEALTH 50.0f
+#define SPACESHIP_SPEED 400.0f
+#define ENEMY_SPAWN_TIMER 0.9f
+#define EXPLOSION_DMG_COOLDOWN 0.15f
+#define GAME_TIME 180000
+#define NUM_OF_AGENTS 3
+#define ENEMY_VARIANT_COUNT 3
+#define TARGET_FPS 120
+
+#define UP 1
+#define DOWN 2
+#define LEFT 4
+#define RIGHT 8
+#define SHOOT 16
+#define NO_ACTION 0
+#define ALL_ACTIONS (UP | DOWN | LEFT | RIGHT | SHOOT)
+
+#endif
