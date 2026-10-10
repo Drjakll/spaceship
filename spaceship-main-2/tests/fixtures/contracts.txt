@@ -1,0 +1,209 @@
+normalized diagonal: 282.842712 -282.842712
+control 0: 400 700 -0.125
+control 1: 400 650 -0.125
+control 2: 400 750 -0.125
+control 3: 400 700 -0.125
+control 4: 350 700 -0.125
+control 5: 364.644653 664.644653 -0.125
+control 6: 364.644653 735.355347 -0.125
+control 7: 350 700 -0.125
+control 8: 450 700 -0.125
+control 9: 435.355347 664.644653 -0.125
+control 10: 435.355347 735.355347 -0.125
+control 11: 450 700 -0.125
+control 12: 400 700 -0.125
+control 13: 400 650 -0.125
+control 14: 400 750 -0.125
+control 15: 400 700 -0.125
+control 16: 400 700 0.25
+control 17: 400 650 0.25
+control 18: 400 750 0.25
+control 19: 400 700 0.25
+control 20: 350 700 0.25
+control 21: 364.644653 664.644653 0.25
+control 22: 364.644653 735.355347 0.25
+control 23: 350 700 0.25
+control 24: 450 700 0.25
+control 25: 435.355347 664.644653 0.25
+control 26: 435.355347 735.355347 0.25
+control 27: 450 700 0.25
+control 28: 400 700 0.25
+control 29: 400 650 0.25
+control 30: 400 750 0.25
+control 31: 400 700 0.25
+clamped boundaries: 975 0
+variant 0: Enemy_1 2 10 5 100 75 1
+enemy initial position: 397 -25
+enemy moved position: 409.5 -22.578125
+enemy moved velocity: 100 19.375
+variant 1: Enemy_2 4 15 7 150 50 1.20000005
+enemy initial position: 61 -25
+enemy moved position: 79.75 -22.96875
+enemy moved velocity: 150 16.25
+variant 2: Enemy_3 8 25 10 100 20 1.39999998
+enemy initial position: 482 -25
+enemy moved position: 494.5 -23.4375
+enemy moved velocity: 100 12.5
+missile moved position: 10 14
+enemy removal callback count: 2
+projectile callback count: 17
+destroyed enemy: 0 50 1 0.150000006 4
+spaceship contact: 49 0.150000006
+snapshot: [{
+	"key_strokes": 17,
+	"timestamp": 123,
+	"score": 9,
+	"frame_number": 4,
+	"spaceship": {
+		"health": 49.000000,
+		"size": 25.000000,
+		"weapon_cd": 0.125000,
+		"position": {
+			"x": 12.000000,
+			"y": 34.000000
+		}
+	},
+	"enemies": [
+		{
+			"health": 0.000000,
+			"size": 50.000000,
+			"dead": 1,
+			"name": "Enemy_2",
+			"velocity": {
+				"x": 1.000000,
+				"y": 50.000000
+			},
+			"position": {
+				"x": 100.000000,
+				"y": 100.000000
+			}
+		}
+	],
+	"projectiles": [
+		{
+			"damage": 10.000000,
+			"size": 10.000000,
+			"velocity": {
+				"x": 0.000000,
+				"y": 30.000000
+			},
+			"position": {
+				"x": 12.000000,
+				"y": 34.000000
+			}
+		}
+	]
+}]
+two snapshots: [{
+	"key_strokes": 17,
+	"timestamp": 123,
+	"score": 9,
+	"frame_number": 4,
+	"spaceship": {
+		"health": 49.000000,
+		"size": 25.000000,
+		"weapon_cd": 0.125000,
+		"position": {
+			"x": 12.000000,
+			"y": 34.000000
+		}
+	},
+	"enemies": [
+		{
+			"health": 0.000000,
+			"size": 50.000000,
+			"dead": 1,
+			"name": "Enemy_2",
+			"velocity": {
+				"x": 1.000000,
+				"y": 50.000000
+			},
+			"position": {
+				"x": 100.000000,
+				"y": 100.000000
+			}
+		}
+	],
+	"projectiles": [
+		{
+			"damage": 10.000000,
+			"size": 10.000000,
+			"velocity": {
+				"x": 0.000000,
+				"y": 30.000000
+			},
+			"position": {
+				"x": 12.000000,
+				"y": 34.000000
+			}
+		}
+	]
+},
+{
+	"key_strokes": 17,
+	"timestamp": 123,
+	"score": 9,
+	"frame_number": 4,
+	"spaceship": {
+		"health": 49.000000,
+		"size": 25.000000,
+		"weapon_cd": 0.125000,
+		"position": {
+			"x": 12.000000,
+			"y": 34.000000
+		}
+	},
+	"enemies": [
+		{
+			"health": 0.000000,
+			"size": 50.000000,
+			"dead": 1,
+			"name": "Enemy_2",
+			"velocity": {
+				"x": 1.000000,
+				"y": 50.000000
+			},
+			"position": {
+				"x": 100.000000,
+				"y": 100.000000
+			}
+		}
+	],
+	"projectiles": [
+		{
+			"damage": 10.000000,
+			"size": 10.000000,
+			"velocity": {
+				"x": 0.000000,
+				"y": 30.000000
+			},
+			"position": {
+				"x": 12.000000,
+				"y": 34.000000
+			}
+		}
+	]
+}]
+empty snapshot: {
+	"key_strokes": 0,
+	"timestamp": 0,
+	"score": 0,
+	"frame_number": 0,
+	"spaceship": {
+		"health": 0.000000,
+		"size": 0.000000,
+		"weapon_cd": 0.000000,
+		"position": {
+			"x": 0.000000,
+			"y": 0.000000
+		}
+	},
+	"enemies": [
+
+	],
+	"projectiles": [
+
+	]
+},
+
+Characterization assertions passed.
