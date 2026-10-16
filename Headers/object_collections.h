@@ -1,17 +1,12 @@
-struct Enemy_Node {
-    struct Enemy_Node *next;
-    Enemy* enemy;
-};
+long Generate_Enemy_Index() {
+
+    return ++enemy_index;
+}
+
 
 struct Projectile_Node {
     struct Projectile_Node *next;
     Ammo* ammo;
-};
-
-struct Enemy_Collections {
-    Enemy_Node* head;
-    Enemy_Node* tail;
-
 };
 
 struct Projectile_Collections{
@@ -21,10 +16,13 @@ struct Projectile_Collections{
 
 
 
-void Insert_Enemy(Enemy* enemy){
+void Insert_Enemy(Enemy* enemy, Enemy_Collections* enemies){
 
+    enemy->id = Generate_Enemy_Index();
     Enemy_Node* new_node = calloc(1, sizeof(Enemy_Node));
     new_node->enemy = enemy;
+
+    enemies->count++;
 
     if(!enemies->head){
         enemies->head = new_node;
@@ -37,37 +35,34 @@ void Insert_Enemy(Enemy* enemy){
     enemies->tail = new_node;
 }
 
-bool Iterate_Enemies(bool (*callback)(Enemy*, double), double deltaTime){
+bool Iterate_Enemies(bool (*callback)(Enemy*, double), double deltaTime, Enemy_Collections* enemies){
 
     bool collision_detected = false;
 
-    if(enemies->head){
+    while(enemies->head){
 
-        if(callback(enemies->head->enemy, deltaTime)){
-            collision_detected = true;
+        Enemy_Node *temp = enemies->head;
+        Enemy *e = temp->enemy;
+
+        bool collided = callback(e, deltaTime);
+        collision_detected |= collided;
+
+        if(e->position.y <= WINDOW_HEIGHT){
+            break;
         }
 
-        if(enemies->head->enemy->position.y > WINDOW_HEIGHT){
+        enemies->head = temp->next;
+        enemies->count--;
 
-            Enemy *e = enemies->head->enemy;
+        free(e->velocity);
+        free(e->time_velocity_shifted);
+        free(e);
+        free(temp);
 
-            free(e->velocity);
-            free(e);
-
-            Enemy_Node *temp = enemies->head;
-
-            enemies->head = enemies->head->next;
-
-            free(temp);
-        }
-
-    } else {
-
-        return false;
-
-    }
+    } 
 
     if(!enemies->head){
+        enemies->tail = NULL;
         return collision_detected;
     }
 
@@ -80,10 +75,13 @@ bool Iterate_Enemies(bool (*callback)(Enemy*, double), double deltaTime){
         }
 
         if(ptr->next->enemy->position.y > WINDOW_HEIGHT){
+
+            enemies->count--;
         
             Enemy *e = ptr->next->enemy;
 
             free(e->velocity);
+            free(e->time_velocity_shifted);
             free(e);
 
             Enemy_Node *temp = ptr->next;
@@ -121,45 +119,37 @@ void Insert_Projectile(Ammo* ammo){
     projectiles->tail->next = new_node;
 
     projectiles->tail = new_node;
+    
 }
 
 bool Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
 
     bool collision_existed = false;
 
-    if(projectiles->head){
+    while (projectiles->head) {
+        Projectile_Node *temp = projectiles->head;
+        Ammo *a = temp->ammo;
 
-        bool collided = callback(projectiles->head->ammo, deltaTime);
+        bool collided = callback(a, deltaTime);
+        collision_existed |= collided;
 
-        if(collided){
-            collision_existed = true;
+        if (!collided && a->position.y >= -MISSILE_RADIUS) {
+            break;
         }
 
-        if(collided || projectiles->head->ammo->position.y < -MISSILE_RADIUS){
-
-            Projectile_Node *temp = projectiles->head;
-
-            Ammo *a = temp->ammo;
-
-            free(a->velocity);
-            free(a);
-
-            projectiles->head = projectiles->head->next;
-
-            free(temp);
+        if (!collided) {
+            Learn_To_Shoot(a->locked_target_id, a, false);
         }
 
-        if(!projectiles->head){
-            return collision_existed;
-        }
-
-    } else {
-        
-        return collision_existed;
-
+        projectiles->head = temp->next;
+        free(a->velocity);
+        free(a);
+        free(temp);
     }
 
+
     if(!projectiles->head){
+        projectiles->tail = NULL;
         return collision_existed;
     }
     
@@ -174,6 +164,10 @@ bool Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
         }
 
         if(collided || ptr->next->ammo->position.y < -MISSILE_RADIUS){
+
+            if(!collided){
+                Learn_To_Shoot(ptr->next->ammo->locked_target_id, ptr->next->ammo, false);
+            }
 
             Projectile_Node *temp = ptr->next;
             Ammo *a = temp->ammo;

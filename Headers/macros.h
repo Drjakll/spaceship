@@ -5,6 +5,10 @@
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 1000
 
+#define MAP_FACTOR 50
+#define MAX_HORIZONTAL 1
+#define MAX_VERTICAL 1
+
 #define ENEMY_TYPE_1 "Enemy_1"
 #define ENEMY_TYPE_1_ATTACK_CD 1
 
@@ -14,14 +18,14 @@
 #define ENEMY_TYPE_3 "Enemy_3"
 #define ENEMY_TYPE_3_ATTACK_CD 1.4
 
-#define SPACESHIP_HEALTH 50.0f
+#define SPACESHIP_HEALTH 1000.0f
 #define SPACESHIP_SPEED 400.0f
 
-#define ENEMY_SPAWN_TIMER 0.9f
+#define ENEMY_SPAWN_TIMER 0.75f
 
 #define EXPLOSION_DMG_COOLDOWN 0.15f
 
-#define GAME_TIME 180000
+#define GAME_TIME 300000
 
 #define UP    0b00001  //1
 #define DOWN  0b00010  //2
@@ -31,3 +35,13 @@
 #define NO_ACTION 0b0  //0
 
 #define NUM_OF_AGENTS 3
+#define ENEMY_AVOIDENCE_CD 0.25f
+#define LEARNING_RATE  0.25f
+#define LEARNING_CD 0.25f
+
+#define ENEMY_AVOID_SPEED_INCREMENT 25
+#define ENEMY_AVOID_NORMAL_SPEED 200.0f
+#define ENEMY_HEALTH 50.0f
+
+#define DETECT_ENEMY_RADIUS 300.0f
+#define ROOM_TO_ESCAPE 25.0f

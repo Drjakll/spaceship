@@ -6,7 +6,7 @@ struct Enemy_Data {
     float size_radius;
     char* name;
     bool dead;
-
+    int id;
 };
 
 struct Enemy_Data_Node {
@@ -69,12 +69,29 @@ bool Add_Enemy_Data_Wrapper(Enemy *enemy, double deltaTime){
         .velocity = *enemy->velocity,
         .size_radius = enemy->size_r,
         .dead = enemy->dead,
-        .name = enemy->name
+        .name = enemy->name,
+        .id = enemy->id
     };
 
     Add_To_Enemy_Data_List(data);
 
     return false;
+}
+
+Enemy_Data* Find_Target_Enemy_Data(Enemy_Data_List list, long id){
+
+    Enemy_Data_Node *ptr = list.head;
+
+    while(ptr){
+
+        if(ptr->enemy_data.id == id){
+            return &ptr->enemy_data;
+        }
+
+        ptr = ptr->next;
+    }
+
+    return NULL;
 }
 
 char* Iterate_Enemy_Data_List(Enemy_Data_List list, char* (*callback)(Enemy_Data)){
@@ -178,17 +195,17 @@ struct Spaceship_Data {
     float health;
     float size_radius;
     float current_weapon_cd;
-
+    Spaceship_State state;
 };
 
 
 //Overall data template
 struct Data{
-    int keys_down;
+    int* keys_down;
     int current_time_ms;
     int frame_number;
-    int current_score;
-    Spaceship_Data spaceship_data;
+    int* current_scores;
+    Spaceship_Data* spaceship_data;
     Enemy_Data_List enemy_data_list;
     Projectile_Data_List projectile_data_list;
     
@@ -255,7 +272,7 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
 
     return final_str;
 }
-
+/*
 char* Extract_Enemy_Data_To_Str_JSON(Enemy_Data data){
 
     char* text = malloc(300);
@@ -321,7 +338,7 @@ char* Convert_Data_To_String(Data data){
     int key_strokes = data.keys_down;
     int time = data.current_time_ms;
     int frame_number = data.frame_number;
-    int current_score = data.current_score;
+    int current_score = data.current_scores;
 
     Spaceship_Data spaceship_data = data.spaceship_data;
 
@@ -428,4 +445,250 @@ char* Convert_Data_To_String(Data data){
 
     return text;
 
+}
+*/
+
+Data* Create_Snapshot(Spaceship *spaceships[], int frame_counts, int scores[], double delta_time, int* keysdown){
+
+    Enemy_Data_List *enemies_data = calloc(1, sizeof(Enemy_Data_List));
+    Projectile_Data_List *projectiles_data = calloc(1, sizeof(Projectile_Data_List));
+
+
+
+    current_enemy_data_list = enemies_data;
+
+    current_projectile_data_list = projectiles_data;
+
+    Iterate_Enemies(Add_Enemy_Data_Wrapper, delta_time, enemy_collections);
+    Iterate_Projectiles(Add_Projectile_Data_Wrapper, delta_time);
+
+    Spaceship_Data* spaceship_data_entries = calloc(NUM_OF_AGENTS, sizeof(Spaceship_Data));
+
+    for(int i = 0 ; i < NUM_OF_AGENTS; i++){
+
+        Spaceship_Data entry = {
+            .position = spaceships[i]->position,
+            .health = spaceships[i]->health,
+            .size_radius = spaceships[i]->size_r,
+            .current_weapon_cd = spaceships[i]->weapon->cd_remain,
+            .state = spaceships[i]->state
+        };
+
+        spaceship_data_entries[i] = entry;
+    }
+
+    Data* data_entry = calloc(1, sizeof(Data));
+    
+    *data_entry = (Data){
+        .keys_down = keysdown,
+        .current_time_ms = (int)(current_time * 1000.0),
+        .spaceship_data = spaceship_data_entries,
+        .enemy_data_list = *enemies_data,
+        .projectile_data_list = *projectiles_data,
+        .frame_number = frame_counts,
+        .current_scores = scores
+    };
+
+
+    return data_entry;
+}
+
+cJSON* Generate_Entry(int x, int y, Reg_Data* rd, int weight_size){
+    cJSON *json = cJSON_CreateObject();
+    cJSON *array = cJSON_CreateArray();
+
+    cJSON_AddItemToObject(json, "x", cJSON_CreateNumber(x));
+    cJSON_AddItemToObject(json, "y", cJSON_CreateNumber(y));
+    cJSON_AddItemToObject(json, "bias", cJSON_CreateNumber(rd->bias));
+    cJSON_AddItemToObject(json, "z", cJSON_CreateNumber(rd->z));
+    cJSON_AddItemToObject(json, "exp_e", cJSON_CreateNumber(rd->exp_e));
+    cJSON_AddItemToObject(json, "probability", cJSON_CreateNumber(rd->probability));
+
+    for(int i = 0; i < weight_size; i++){
+        cJSON_AddItemToArray(array, cJSON_CreateNumber(rd->weight[i]));
+    }
+
+    cJSON_AddItemToObject(json, "weight", array);
+
+    return json;
+
+}
+
+void Save(Coordinate_Probability* cp, int i){
+
+    int x = 2 * WINDOW_WIDTH / MAP_FACTOR;
+    int y = 2 * WINDOW_HEIGHT / MAP_FACTOR;
+
+    
+    cJSON *shoot = cJSON_CreateArray();
+    cJSON *move_h = cJSON_CreateArray();
+    cJSON *move_v = cJSON_CreateArray();
+    cJSON *whole_json = cJSON_CreateObject();
+
+    for(int i = 0; i < x; i++){
+
+        for(int j = 0; j < y; j++){
+
+            for(int k = 0; k < 2; k++){
+                cJSON* shoot_json = Generate_Entry(i, j, &cp->shoot_prob[i][j].shoot[k], 2);
+
+                cJSON_AddItemToArray(shoot, shoot_json);
+            }
+
+            for(int k = 0; k < 3; k++){
+                cJSON* move_h_json = Generate_Entry(i, j, &cp->move_prob_h[i][j].move[k], 3);
+
+                cJSON_AddItemToArray(move_h, move_h_json);
+
+                cJSON* move_v_json = Generate_Entry(i, j, &cp->move_prob_v[i][j].move[k], 3);
+
+                cJSON_AddItemToArray(move_v, move_v_json);
+            }
+        }
+    }
+
+    cJSON_AddItemToObject(whole_json, "shoot", shoot);
+    cJSON_AddItemToObject(whole_json, "move_h", move_h);
+    cJSON_AddItemToObject(whole_json, "move_v", move_v);
+
+    char *json_str = cJSON_Print(whole_json);
+
+    char filename[64];
+
+    snprintf(filename, sizeof(filename), "Game_Data/trained%i.json", i);
+
+    FILE *file = fopen(filename, "w");
+
+    if (file == NULL) {
+        printf("Failed to open file.\n");
+        return;
+    }
+
+    fputs(json_str, file);
+
+    fclose(file);
+}
+
+
+
+void Add_Reg_Data(Reg_Data *rd, cJSON* item, int weight_size){
+
+    cJSON* arr = cJSON_GetObjectItemCaseSensitive(item, "weight");
+    const char *fields[] = {"bias", "z", "exp_e", "probability"};
+    cJSON *values[4];
+
+    if(!rd->weight || !cJSON_IsArray(arr) || cJSON_GetArraySize(arr) != weight_size){
+        return;
+    }
+    for(int i = 0; i < weight_size; i++){
+        if(!cJSON_IsNumber(cJSON_GetArrayItem(arr, i))){
+            return;
+        }
+    }
+    for(int i = 0; i < 4; i++){
+        values[i] = cJSON_GetObjectItemCaseSensitive(item, fields[i]);
+        if(!cJSON_IsNumber(values[i])){
+            return;
+        }
+    }
+    for(int i = 0; i < weight_size; i++){
+        rd->weight[i] = cJSON_GetArrayItem(arr, i)->valuedouble;
+    }
+    rd->bias = values[0]->valuedouble;
+    rd->z = values[1]->valuedouble;
+    rd->exp_e = values[2]->valuedouble;
+    rd->probability = values[3]->valuedouble;
+
+}
+
+void Read_Data(Coordinate_Probability* cp, int i){
+
+    char filename[64];
+
+    snprintf(filename, sizeof(filename), "Game_Data/trained%i.json", i);
+
+    FILE *file = fopen(filename, "rb");
+
+    if (file == NULL) {
+        printf("Cannot open file\n");
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    rewind(file);
+
+    if (size < 0) {
+        fclose(file);
+        return;
+    }
+
+    char *buffer = malloc((size_t)size + 1);
+
+    if (buffer == NULL) {
+        fclose(file);
+        return;
+    }
+
+    size_t bytesRead = fread(buffer, 1, (size_t)size, file);
+    fclose(file);
+
+    buffer[bytesRead] = '\0';
+
+    if (bytesRead != (size_t)size) {
+        free(buffer);
+        return;
+    }
+
+    cJSON *json = cJSON_Parse(buffer);
+
+    free(buffer);
+
+    if (json == NULL) {
+        printf("Invalid JSON\n");
+        return;
+    }
+
+    int max_x = 2 * WINDOW_WIDTH / MAP_FACTOR;
+    int max_y = 2 * WINDOW_HEIGHT / MAP_FACTOR;
+    const char *names[] = {"shoot", "move_h", "move_v"};
+
+    for(int section = 0; section < 3; section++){
+        
+        cJSON *array = cJSON_GetObjectItemCaseSensitive(json, names[section]);
+
+        int actions = section == 0 ? 2 : 3;
+
+        int count = cJSON_GetArraySize(array);
+
+        for(int i = 0; i < count; i++){
+
+            cJSON *item = cJSON_GetArrayItem(array, i);
+            cJSON *x_item = cJSON_GetObjectItemCaseSensitive(item, "x");
+            cJSON *y_item = cJSON_GetObjectItemCaseSensitive(item, "y");
+            if(!cJSON_IsNumber(x_item) || !cJSON_IsNumber(y_item)){
+                continue;
+            }
+            double x_value = x_item->valuedouble;
+            double y_value = y_item->valuedouble;
+            if(!isfinite(x_value) || !isfinite(y_value) ||
+               x_value < 0 || x_value >= max_x || y_value < 0 || y_value >= max_y ||
+               floor(x_value) != x_value || floor(y_value) != y_value){
+                continue;
+            }
+            int x = (int)x_value;
+            int y = (int)y_value;
+            int index = i % actions;
+            Reg_Data *rd;
+            if(section == 0){
+                rd = &cp->shoot_prob[x][y].shoot[index];
+            } else if(section == 1){
+                rd = &cp->move_prob_h[x][y].move[index];
+            } else {
+                rd = &cp->move_prob_v[x][y].move[index];
+            }
+            Add_Reg_Data(rd, item, actions);
+        }
+    }
+    cJSON_Delete(json);
 }

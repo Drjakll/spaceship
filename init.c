@@ -5,14 +5,17 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <cjson/cJSON.h>
 
 #include "Headers/macros.h"
 #include "Headers/global_declarations.h"
+#include "Headers/ml_utilities.h"
 #include "Headers/self_control.h"
 #include "Headers/objects.h"
-#include "Headers/data.h"
 #include "Headers/object_collections.h"
+#include "Headers/data.h"
 #include "Headers/detections.h"
+
 
 
 //If you move left + up, it will move faster versus moving just left or up. This normalize it.
@@ -92,14 +95,14 @@ void Control_Spaceship(int i, int control, double delta_time ){
     spaceship->position.x += delta.x * delta_time;
     spaceship->position.y += delta.y * delta_time;
 
-    if(spaceship->position.x > WINDOW_WIDTH - SPACESHIP_RADIUS){
-        spaceship->position.x = WINDOW_WIDTH - SPACESHIP_RADIUS;
+    if(spaceship->position.x > WINDOW_WIDTH - 2 * SPACESHIP_RADIUS){
+        spaceship->position.x = WINDOW_WIDTH - 2 * SPACESHIP_RADIUS;
     } else if(spaceship->position.x < 0){
         spaceship->position.x = 0;
     }
     
-    if(spaceship->position.y > WINDOW_HEIGHT - SPACESHIP_RADIUS){
-        spaceship->position.y = WINDOW_HEIGHT - SPACESHIP_RADIUS;
+    if(spaceship->position.y > WINDOW_HEIGHT - 2 * SPACESHIP_RADIUS){
+        spaceship->position.y = WINDOW_HEIGHT - 2 * SPACESHIP_RADIUS;
     } else if(spaceship->position.y < 0){
         spaceship->position.y = 0;
     }
@@ -116,6 +119,22 @@ void Control_Spaceship(int i, int control, double delta_time ){
         }
     }
     
+}
+
+bool Help_Ally(int self_index){
+
+
+    for(int i = 1; i < NUM_OF_AGENTS; i++){
+
+        int new_index = (self_index + i) % NUM_OF_AGENTS;
+
+        if(best_target_probability[new_index] != NULL){
+            best_target_probability[self_index] = best_target_probability[new_index];
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 int main(){
@@ -138,7 +157,7 @@ int main(){
     };
 
     projectiles = calloc(1, sizeof(Projectile_Collections));
-    enemies = calloc(1, sizeof(Enemy_Collections));
+    enemy_collections = calloc(1, sizeof(Enemy_Collections));
 
     //The enemy spawn_timer
     float spawn_timer = ENEMY_SPAWN_TIMER;
@@ -151,47 +170,39 @@ int main(){
 
     Initialize_Agents();
 
+    coordinate_prob = calloc(NUM_OF_AGENTS, sizeof(Coordinate_Probability));
+
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+        Init_Coord_Prob(&coordinate_prob[i]);
+        Read_Data(&coordinate_prob[i], i);
+    }
+
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+        ship_ctrl_prob[i] = calloc(1, sizeof(Ship_Ctrl_Probability));
+
+        Init_Ship_Ctrl_Prob(ship_ctrl_prob[i]);
+    }
+
+    best_target_probability = calloc(NUM_OF_AGENTS, sizeof *best_target_probability);
+
     while (!WindowShouldClose()) {
+
+        //closest_enemy = NULL;
+        for(int i = 0; i < NUM_OF_AGENTS; i++){
+            best_target_probability[i] = NULL;
+        }
 
         double this_time = GetTime();
 
         double delta_time = this_time - last_time;
 
+        current_time += delta_time;
+
         spawn_timer -= delta_time;
 
-        int keys_down[NUM_OF_AGENTS];
+        int* keys_down = calloc(NUM_OF_AGENTS, sizeof(int));
 
-        /*
-        if(IsKeyDown(KEY_A)){
-            keys_down |= LEFT;
-        }
-
-        if(IsKeyDown(KEY_D)){
-            keys_down |= RIGHT;
-        }
-
-        if(IsKeyDown(KEY_W)){
-            keys_down |= UP;
-        }
-        
-        if(IsKeyDown(KEY_S)){
-            keys_down |= DOWN;
-        }
-
-        if(IsKeyPressed(KEY_O)){
-
-            keys_down |= SHOOT;
-
-        }
-        */
-
-        for(int i = 0; i < NUM_OF_AGENTS; i++){
-
-            keys_down[i] = GetRandomValue(0, 0b11111);
-
-            Control_Spaceship(i, keys_down[i], delta_time);
-
-        }
 
         last_time = this_time;
 
@@ -208,6 +219,93 @@ int main(){
         }
 
 
+        for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+            if(spaceships[i]->dead){
+                continue;
+            }
+
+            for_spaceship = i;
+            //closest_enemy = NULL;
+            best_target_probability[i] = NULL;
+
+            //Iterate_Enemies(Gather_State, delta_time, enemy_collections);
+            Iterate_Enemies(Find_Best_Probability_Target, delta_time, enemy_collections);
+            Iterate_Enemies(Detect_Surrounding_Enemies, delta_time, enemy_collections);
+            Iterate_Enemies(Detect_Spaceship_Collision, delta_time, enemy_collections);
+
+            spaceships[i]->locked_target = best_target_probability[i];
+
+            if(best_target_probability[i] == NULL){
+
+                Help_Ally(i);
+
+            } 
+
+            spaceships[i]->locked_target = best_target_probability[i];
+
+            Vector2 displacement = {0, 0};
+
+            if (spaceships[i]->locked_target != NULL) {
+
+                displacement = Calc_XY_Coord_Difference(
+                    spaceships[i]->position,
+                    spaceships[i]->locked_target->position
+                );
+
+            }
+
+            spaceships[i]->learning_cooldown -= delta_time;
+            spaceships[i]->avoid_enemy_timer -= delta_time;
+
+            if(spaceships[i]->avoid_enemy_timer <= 0.0f && spaceships[i]->learning_cooldown <= 0.0f){
+                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], false);
+                spaceships[i]->learning_cooldown = LEARNING_CD;
+            }
+
+            int limit_x = 2 * WINDOW_WIDTH / MAP_FACTOR;
+            int limit_y = 2 * WINDOW_HEIGHT / MAP_FACTOR;
+
+            displacement.x /= MAP_FACTOR;
+            displacement.y /= MAP_FACTOR;
+
+            displacement.x += (limit_x/2);
+            displacement.y += (limit_y/2);
+
+            int x = (int)(displacement.x) - 1;
+            int y = (int)(displacement.y) - 1;
+
+            x = x < 0 ? 0 : x;
+            y = y < 0 ? 0 : y;
+
+            x = x >= limit_x ? limit_x - 1 : x;
+            y = y >= limit_y ? limit_y - 1 : y;
+
+            spaceships[i]->scp->horizontal = coordinate_prob[i].move_prob_h[x][y];
+            spaceships[i]->scp->vertical = coordinate_prob[i].move_prob_v[x][y];
+
+            spaceships[i]->scp->shoot = coordinate_prob[i].shoot_prob[x][y];
+
+            keys_down[i] = Compute_Action(spaceships[i]->scp);
+            
+        }
+
+        Data* data = Create_Snapshot(spaceships, frame_count, score, delta_time, keys_down);
+
+        current_game_snapshot = data;
+
+        for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+            if(spaceships[i]->dead){
+                continue;
+            }
+
+            Control_Spaceship(i, keys_down[i], delta_time);
+
+        }
+
+        Iterate_Enemies(Enemy_Learn_To_Avoid, delta_time, enemy_collections);
+        
 
         BeginDrawing();
 
@@ -218,102 +316,75 @@ int main(){
                 Spaceship *spaceship = spaceships[i];
 
                 DrawTexture(spaceship->model, spaceship->position.x, spaceship->position.y, WHITE);
+
+                char index[16];
+
+                snprintf(index, sizeof(index), "%i", i);
+                DrawTextEx(font, index, (Vector2){spaceship->position.x + spaceship->size_r/2, spaceship->position.y + spaceship->size_r + 15}, 24, 1, WHITE);
             }
 
             Iterate_Projectiles(Detect_Projectile_Collisions, delta_time);
 
 
-            Iterate_Enemies(Move_Enemy, delta_time);
-            Iterate_Enemies(Update_Enemy_Attack_Cooldown, delta_time);
+            Iterate_Enemies(Move_Enemy, delta_time, enemy_collections);
+            Iterate_Enemies(Update_Enemy_Attack_Cooldown, delta_time, enemy_collections);
             Iterate_Projectiles(Move_Projectile, delta_time);
 
 
             char score_text[100];
             char health_text[25];
             char time_elapsed[25];
+            char hit_rate[25];
 
             for(int i = 0; i < NUM_OF_AGENTS; i++){
-                snprintf(score_text, 100, "Total Score: %d", score[i]);
+                snprintf(score_text, 100, "Ship %i Total Score: %d", i, score[i]);
 
                 DrawTextEx(font, score_text, (Vector2){50, 50 + 50*i}, 24, 1, WHITE);
+
+                snprintf(health_text, 25, "%i Health: %i", i, (int)spaceships[i]->health);
+
+                DrawTextEx(font, health_text, (Vector2){WINDOW_WIDTH - 300, 50 + 50*i}, 24, 1, WHITE);
             }
 
-            //snprintf(health_text, 25, "Health: %f", spaceship->health);
-
-            //DrawTextEx(font, health_text, (Vector2){WINDOW_WIDTH - 300, 50}, 24, 1, WHITE);
+            
 
             snprintf(time_elapsed, 25, "Time: %d", (GAME_TIME - (int)accumulated_time));
+            snprintf(hit_rate, 25, "Hit Rate: %i%%", (int)(100 * ((float)enemies_hit/(float)enemies_spawned)));
 
             DrawTextEx(font, time_elapsed, (Vector2){WINDOW_WIDTH/2, 50}, 24, 1, WHITE);
+            DrawTextEx(font, hit_rate, (Vector2){WINDOW_WIDTH/2, 100}, 24, 1, WHITE);
 
         EndDrawing();
+
+        bool keep_going = false;
+
+        for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+            spaceships[i]->surrounding_enemies->head = NULL;
+            spaceships[i]->surrounding_enemies->tail = NULL;
+            spaceships[i]->surrounding_enemies->count = 0;
+
+            if(spaceships[i]->dead == false){
+                keep_going = true;
+                break;
+            }
+
+        }
+
+        if(!keep_going){
+            break;
+        }
 
 
         frame_count++;
 
-        //Collects data
-        /*
         accumulated_time += delta_time * 1000;
 
-        if(frame_count % 4 != 0 && keys_down == 0){
-            continue;
-        }
-
-        Enemy_Data_List *enemies_data = calloc(1, sizeof(Enemy_Data_List));
-        Projectile_Data_List *projectiles_data = calloc(1, sizeof(Projectile_Data_List));
-
-
-        current_enemy_data_list = enemies_data;
-   
-        current_projectile_data_list = projectiles_data;
-
-        Iterate_Enemies(Add_Enemy_Data_Wrapper, delta_time);
-        Iterate_Projectiles(Add_Projectile_Data_Wrapper, delta_time);
-
-        Spaceship_Data new_spaceship_data_entry = {
-            .position = spaceship->position,
-            .health = spaceship->health,
-            .size_radius = spaceship->size_r,
-            .current_weapon_cd = spaceship->weapon->cd_remain
-        };
-
-        Data data_entry = {
-            .keys_down = keys_down,
-            .current_time_ms = (int)accumulated_time,
-            .spaceship_data = new_spaceship_data_entry,
-            .enemy_data_list = *enemies_data,
-            .projectile_data_list = *projectiles_data,
-            .frame_number = frame_count,
-            .current_score = score
-        };
-
-        Add_To_Data(data_entry, data_list);
-
-        //Check see if spaceship hit onto any enemy, if so, then game over
-        if(Iterate_Enemies(Detect_Spaceship_Collision, delta_time)){
-            break;
-        }
-
-        if(GAME_TIME - (int)(accumulated_time) < 0){
-            break;
-        }
-        */
     }
 
-    /*
-    char* json_str = Iterate_Data(*data_list, Convert_Data_To_String);
-
-    FILE *file = fopen("Game_Data/game_snapshots.json", "w");
-
-    if (file == NULL) {
-        printf("Failed to open file.\n");
-        return 1;
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+        Save(&coordinate_prob[i], i);
     }
-
-    fputs(json_str, file);
-
-    fclose(file);
-    */
 
     UnloadImage(enemy_img_1);
     UnloadImage(enemy_img_2);
