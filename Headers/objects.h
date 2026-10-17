@@ -66,6 +66,7 @@ struct Spaceship {
     float learning_cooldown;
     bool dead;
     Enemy_Collections* surrounding_enemies; 
+    Data_List* snapshots;
 };
 
 float* Increase_Array_size(float *arr, float new_val, int old_size){
@@ -265,7 +266,7 @@ Spaceship *Create_Spaceship() {
     spaceship->locked_target = NULL;
     spaceship->scp = calloc(1, sizeof(Ship_Ctrl_Probability));
     spaceship->dead = false;
-    spaceship->surrounding_enemies = calloc(1, sizeof(Enemy_Collections));
+    spaceship->surrounding_enemies = calloc(1, sizeof *spaceship->surrounding_enemies);
     Init_Ship_Ctrl_Prob(spaceship->scp);
 
     Image img = LoadImage("Pictures/spaceship.png");

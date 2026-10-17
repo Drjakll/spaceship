@@ -63,6 +63,8 @@ void Initialize_Agents(){
     for(int i = 0; i < NUM_OF_AGENTS; i++){
         spaceships[i] = Create_Spaceship();
 
+        spaceships[i]->snapshots = calloc(1, sizeof *spaceships[i]->snapshots);
+
         spaceships[i]->position = (Vector2){400 + 50*i, 700};
     }
 
@@ -253,6 +255,7 @@ int main(){
             Vector2 displacement = {0, 0};
             int distance = 0;
 
+            
             if (spaceships[i]->locked_target != NULL) {
 
                 displacement = Calc_XY_Coord_Difference(
@@ -260,25 +263,28 @@ int main(){
                     spaceships[i]->locked_target->position
                 );
 
-                distance = (int)calc_mag(spaceships[i]->position, spaceships[i]->locked_target->position);
+                //distance = (int)calc_mag(spaceships[i]->position, spaceships[i]->locked_target->position);
 
-                distance /= MAP_FACTOR;
+                //distance /= MAP_FACTOR;
 
-                distance = distance >= distance_size ? distance_size - 1 : distance;
+                //distance = distance >= distance_size ? distance_size - 1 : distance;
 
             }
+                
 
             spaceships[i]->learning_cooldown -= delta_time;
             spaceships[i]->avoid_enemy_timer -= delta_time;
 
+            /*
             if(spaceships[i]->avoid_enemy_timer <= 0.0f && spaceships[i]->learning_cooldown <= 0.0f){
 
-                bool approach = Compute_Approach(&coordinate_prob[i].approach_prob[distance]);
+                //bool approach = Compute_Approach(&coordinate_prob[i].approach_prob[distance]);
 
-                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], approach);
+                //Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], approach);
                 spaceships[i]->learning_cooldown = LEARNING_CD;
 
             }
+            */
 
             Vector2 coord = Normalize(displacement);
 
@@ -299,6 +305,16 @@ int main(){
 
         current_game_snapshot = data;
 
+        if(frame_count % SNAPSHOT_INTERVAL_FRAMECOUNT == 0){
+
+            for(int i = 0; i < NUM_OF_AGENTS; i++){
+
+                Create_Snapshot_Of_Enemies_For_Spaceship(spaceships[i], &keys_down[i], delta_time);
+
+            }
+
+        }
+
         for(int i = 0; i < NUM_OF_AGENTS; i++){
 
             if(spaceships[i]->dead){
@@ -309,8 +325,6 @@ int main(){
 
         }
 
-        //Iterate_Enemies(Enemy_Learn_To_Avoid, delta_time, enemy_collections);
-        
 
         BeginDrawing();
 

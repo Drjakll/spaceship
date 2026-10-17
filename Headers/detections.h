@@ -108,10 +108,10 @@ void Surface_Area_Move(int radius, Ship_Ctrl_Move_Prob scmp_, Vector2 center, Sh
     }
 }
 
-void Learn(Enemy_Data *enemy_data, Ammo *ammo, float shoot_answer[], float h_answer[], float v_answer[]){
+void Learn(Enemy_Data *enemy_data, Spaceship_Data* spaceship_data, Ammo *ammo, float shoot_answer[], float h_answer[], float v_answer[]){
 
-
-    ammo->end_snapshot = current_game_snapshot;
+    if(ammo)
+        ammo->end_snapshot = current_game_snapshot;
 
     Vector2 displacement = {.x = 0, .y = 0};
 
@@ -119,7 +119,11 @@ void Learn(Enemy_Data *enemy_data, Ammo *ammo, float shoot_answer[], float h_ans
         return;
     }
 
-    displacement = Calc_XY_Coord_Difference(ammo->initial_spaceship_pos, enemy_data->position);
+    if(ammo)
+        displacement = Calc_XY_Coord_Difference(ammo->initial_spaceship_pos, enemy_data->position);
+
+    if(spaceship_data)
+        displacement = Calc_XY_Coord_Difference(spaceship_data->position, enemy_data->position);
 
     int limit_x =  2 * WINDOW_WIDTH/(MAP_FACTOR);
     int limit_y =  2 * WINDOW_HEIGHT/(MAP_FACTOR); 
@@ -139,14 +143,19 @@ void Learn(Enemy_Data *enemy_data, Ammo *ammo, float shoot_answer[], float h_ans
     x = x >= limit_x ? limit_x - 1 : x;
     y = y >= limit_y ? limit_y - 1 : y;
 
-    Ship_Ctrl_Shoot_Prob* shoot_prob = &coordinate_prob[ammo->belongs_to].shoot_prob[x][y];
+    int coord_index = ammo ? ammo->belongs_to : for_spaceship;
 
-    float input[] = {(2.0f)* (1.0f -  (x / (float)(limit_x))), (2.0f)*(1.0f - (y / (float)(limit_y)))};
+
+    Ship_Ctrl_Shoot_Prob* shoot_prob = &coordinate_prob[coord_index].shoot_prob[x][y];
+
+    float input[] = {(2.0f)* (x / (float)(limit_x)), (2.0f)*(y / (float)(limit_y))};
 
     Multi_Logistic_Regression(shoot_prob->shoot, learning_rate, shoot_answer, input, 2, 2);
 
-    Ship_Ctrl_Move_Prob* scmp_h = &coordinate_prob[ammo->belongs_to].move_prob_h[x][y];
-    Ship_Ctrl_Move_Prob* scmp_v = &coordinate_prob[ammo->belongs_to].move_prob_v[x][y];
+
+
+    Ship_Ctrl_Move_Prob* scmp_h = &coordinate_prob[coord_index].move_prob_h[x][y];
+    Ship_Ctrl_Move_Prob* scmp_v = &coordinate_prob[coord_index].move_prob_v[x][y];
 
 
     Multi_Logistic_Regression(scmp_h->move, learning_rate, h_answer, input, 3, 2);
@@ -163,14 +172,25 @@ void Learn(Enemy_Data *enemy_data, Ammo *ammo, float shoot_answer[], float h_ans
     int sv = scmp_v->move[1].probability * 100;
     int d = scmp_v->move[2].probability * 100;
 
-    printf("Enemy Coord- x: %i, y: %i\nSpaceship Coord- x: %i, y: %i\n\n", 
-                                            (int)enemy_data->position.x/MAP_FACTOR,
-                                            (int)enemy_data->position.y/MAP_FACTOR,
-                                            (int)ammo->initial_spaceship_pos.x/MAP_FACTOR,
-                                            (int)ammo->initial_spaceship_pos.y/MAP_FACTOR 
-                                        );
-    printf("Disp Coord - x: %i, y: %i\nshoot: %i%%, no shoot: %i%%\nleft: %i%%, stay: %i%%, right: %i%%\nup: %i%%, stay: %i%%, down: %i%%\n\n", x, y, s, ds, l, sh, r, u, sv, d);
+    if(ammo){
+        printf("Enemy Coord- x: %i, y: %i\nSpaceship Coord- x: %i, y: %i\n\n", 
+                                                (int)enemy_data->position.x/MAP_FACTOR,
+                                                (int)enemy_data->position.y/MAP_FACTOR,
+                                                (int)ammo->initial_spaceship_pos.x/MAP_FACTOR,
+                                                (int)ammo->initial_spaceship_pos.y/MAP_FACTOR 
+                                            );
+        printf("Disp Coord - x: %i, y: %i\nshoot: %i%%, no shoot: %i%%\nleft: %i%%, stay: %i%%, right: %i%%\nup: %i%%, stay: %i%%, down: %i%%\n\n", x, y, s, ds, l, sh, r, u, sv, d);
+    }
 
+    if(spaceship_data){
+        printf("Enemy Coord- x: %i, y: %i\nSpaceship Coord- x: %i, y: %i\n\n", 
+                                                (int)enemy_data->position.x/MAP_FACTOR,
+                                                (int)enemy_data->position.y/MAP_FACTOR,
+                                                (int)spaceship_data->position.x/MAP_FACTOR,
+                                                (int)spaceship_data->position.y/MAP_FACTOR 
+                                            );
+        printf("Disp Coord - x: %i, y: %i\nshoot: %i%%, no shoot: %i%%\nleft: %i%%, stay: %i%%, right: %i%%\nup: %i%%, stay: %i%%, down: %i%%\n\n", x, y, s, ds, l, sh, r, u, sv, d);
+    }
 }
 
 void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
@@ -215,7 +235,7 @@ void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
         v_answer[1] = 1;
     }
 
-    Learn(enemy_data, ammo, shoot_answer, h_answer, v_answer);
+    Learn(enemy_data, NULL, ammo, shoot_answer, h_answer, v_answer);
 
 }
 
@@ -250,7 +270,7 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
 
     distance = distance >= distance_size ? distance_size - 1 : distance;
 
-    float input[] = { 2.0f * (1.0f - (x) / (limit_x)), 2.0f* (1.0f - (y) / (limit_y))};
+    float input[] = { 2.0f * (x) / (limit_x), 2.0f* (y) / (limit_y)};
 
     Ship_Ctrl_Move_Prob* scmp_h = &coordinate_prob[for_spaceship].move_prob_h[x][y];
     Ship_Ctrl_Move_Prob* scmp_v = &coordinate_prob[for_spaceship].move_prob_v[x][y];
@@ -460,6 +480,41 @@ bool Update_Enemy_Attack_Cooldown(Enemy *enemy, double deltaTime){
 }
 
 
+void Learn_What_Not_To_Do(Data* snapshot, long enemy_id){
+
+    Enemy_Data* enemy_data = Find_Target_Enemy_Data(snapshot->enemy_data_list, enemy_id);
+
+    int keys_down = *snapshot->keys_down;
+
+    float shoot[] = {1,1};
+    float move_h[] = {0.5, 0.5, 0.5};
+    float move_v[] = {0.5, 0.5, 0.5};
+
+    if(keys_down & SHOOT){
+        shoot[1] = 0; 
+    } else {
+        shoot[0] = 0;
+    }
+
+    if(keys_down & LEFT){
+        move_h[0] = 0.0;
+    } else if(keys_down & RIGHT){
+        move_h[2] = 0.0;
+    } else {
+        move_h[1] = 0.0;
+    }
+
+    if(keys_down & UP){
+        move_v[0] = 0.0;
+    } else if(keys_down & DOWN){
+        move_v[2] = 0.0;
+    } else {
+        move_v[1] = 0.0f;
+    }
+
+    Learn(enemy_data, snapshot->spaceship_data, NULL, shoot, move_h, move_v);
+}
+
 
 bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
 
@@ -476,7 +531,14 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
     }
 
     if(dist < collision_min){
-        Learn_To_Approach(enemy, spaceships[for_spaceship], false);
+        //Learn_To_Approach(enemy, spaceships[for_spaceship], false);
+
+        if(spaceship->snapshots && spaceship->snapshots->head){
+            
+            Data* snapshot = &spaceship->snapshots->head->data;
+
+            Learn_What_Not_To_Do(snapshot, enemy->id);
+        }
     }
 
     if(spaceship->health <= 0.0f){

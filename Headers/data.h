@@ -220,11 +220,65 @@ struct Data_Node {
 struct Data_List {
     Data_Node *head;
     Data_Node *tail;
+    int count;
 };
 
+void Append_To_Data(Data data, Data_List *list){
 
+    if(!list){
+        return;
+    }
+
+    Data_Node *new_node = calloc(1, sizeof(Data_Node));
+
+    if(!new_node){
+        return;
+    }
+
+    list->count++;
+
+    new_node->data = data;
+
+    if(list->count > MAX_DATA_STORAGE && list->head != NULL){
+
+        Data_Node* temp = list->head;
+
+        list->head = list->head->next;
+
+        list->count--;
+
+        Enemy_Data_Node *enemy = temp->data.enemy_data_list.head;
+
+        while (enemy) {
+            Enemy_Data_Node *next = enemy->next;
+            free(enemy);
+            enemy = next;
+        }
+
+        free(temp->data.spaceship_data);
+        free(temp);
+    }
+
+    if(list->head == NULL){
+
+        list->head = new_node;
+
+        list->tail = new_node;
+
+        return;
+    }
+
+    list->tail->next = new_node;
+    list->tail = new_node;
+}
 
 void Add_To_Data(Data data, Data_List *list){
+
+    if(!list->count){
+        list->count = 0;
+    }
+
+    list->count++;
 
     Data_Node *new_node = calloc(1, sizeof(Data_Node));
     new_node->data = data;
@@ -272,6 +326,8 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
 
     return final_str;
 }
+
+
 /*
 char* Extract_Enemy_Data_To_Str_JSON(Enemy_Data data){
 
@@ -447,6 +503,40 @@ char* Convert_Data_To_String(Data data){
 
 }
 */
+
+void Create_Snapshot_Of_Enemies_For_Spaceship(Spaceship *spaceship, int* keysdown, double delta_time){
+
+    Enemy_Data_List *enemies_data = calloc(1, sizeof(Enemy_Data_List));
+
+    current_enemy_data_list = enemies_data;
+
+    Iterate_Enemies(Add_Enemy_Data_Wrapper, delta_time, enemy_collections);
+
+    Spaceship_Data* spaceship_data_entry = calloc(1, sizeof(Spaceship_Data));
+
+    spaceship_data_entry->position = spaceship->position;
+    spaceship_data_entry->health = spaceship->health;
+    spaceship_data_entry->size_radius = spaceship->size_r;
+    spaceship_data_entry->current_weapon_cd = spaceship->weapon->cd_remain;
+    spaceship_data_entry->state = spaceship->state;
+
+    Data* data_entry = calloc(1, sizeof(Data));
+
+    *data_entry = (Data){
+        .keys_down = keysdown,
+        .current_time_ms = (int)(current_time * 1000.0),
+        .spaceship_data = spaceship_data_entry,
+        .enemy_data_list = *enemies_data,
+        .projectile_data_list = {0},
+        .frame_number = 0,
+        .current_scores = 0
+    };
+
+    Append_To_Data(*data_entry, spaceship->snapshots);
+
+    free(data_entry);
+    free(enemies_data);
+}
 
 Data* Create_Snapshot(Spaceship *spaceships[], int frame_counts, int scores[], double delta_time, int* keysdown){
 
