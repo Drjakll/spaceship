@@ -272,19 +272,19 @@ int main(){
             }
                 
 
-            spaceships[i]->learning_cooldown -= delta_time;
-            spaceships[i]->avoid_enemy_timer -= delta_time;
+            //spaceships[i]->learning_cooldown -= delta_time;
+            //spaceships[i]->avoid_enemy_timer -= delta_time;
 
-            /*
-            if(spaceships[i]->avoid_enemy_timer <= 0.0f && spaceships[i]->learning_cooldown <= 0.0f){
+            
+            if(spaceships[i]->locked_target != NULL){
 
                 //bool approach = Compute_Approach(&coordinate_prob[i].approach_prob[distance]);
 
-                //Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], approach);
-                spaceships[i]->learning_cooldown = LEARNING_CD;
+                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], closest_enemy == NULL);
+                //spaceships[i]->learning_cooldown = LEARNING_CD;
 
             }
-            */
+            
 
             Vector2 coord = Normalize(displacement);
 
@@ -300,10 +300,6 @@ int main(){
             keys_down[i] = Compute_Action(spaceships[i]->scp);
             
         }
-
-        Data* data = Create_Snapshot(spaceships, frame_count, score, delta_time, keys_down);
-
-        current_game_snapshot = data;
 
         if(frame_count % SNAPSHOT_INTERVAL_FRAMECOUNT == 0){
 
@@ -324,6 +320,10 @@ int main(){
             Control_Spaceship(i, keys_down[i], delta_time);
 
         }
+
+        Data* data = Create_Snapshot(spaceships, frame_count, score, delta_time, keys_down);
+
+        current_game_snapshot = data;
 
 
         BeginDrawing();
@@ -385,7 +385,6 @@ int main(){
 
             if(spaceships[i]->dead == false){
                 keep_going = true;
-                break;
             }
 
         }

@@ -91,3 +91,8 @@ struct Enemy_Collections {
     int count;
 };
 
+Vector2 Find_Center(Vector2 orig, float radius){
+
+    return (Vector2){.x = orig.x + radius, .y = orig.y + radius};
+}
+

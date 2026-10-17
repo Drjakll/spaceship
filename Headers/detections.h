@@ -265,7 +265,10 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
     int x = (int)(coord.x);
     int y = (int)(coord.y);
 
-    int distance = (int)calc_mag(spaceship->position, enemy->position);
+    Vector2 spaceship_center = Find_Center(spaceship->position, spaceship->size_r);
+    Vector2 enemy_center = Find_Center(enemy->position, enemy->size_r);
+
+    int distance = (int)calc_mag(spaceship_center, enemy_center);
     distance /= MAP_FACTOR;
 
     distance = distance >= distance_size ? distance_size - 1 : distance;
@@ -276,32 +279,32 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
     Ship_Ctrl_Move_Prob* scmp_v = &coordinate_prob[for_spaceship].move_prob_v[x][y];
     Ship_Ctrl_Approach_Prob* approach_prob = &coordinate_prob[for_spaceship].approach_prob[distance];
     
-    float h_answer[] = {0,0,0};
-    float v_answer[] = {0,0,0};
+    float h_answer[] = {0.5,0.5,0.5};
+    float v_answer[] = {0.5,0.5,0.5};
 
     if(!avoid){
         avoid = scmp_h->avoid_zone;
     }
 
     if(disp.x > 0){ //Enemy at the left side
-        h_answer[avoid ? 2 : 0] = 1;
+        h_answer[avoid ? 0 : 2] = 0.0;
         x = avoid ? x + 1 : x;
     } else if(disp.x < 0){ //Enemy at the right side
-        h_answer[avoid ? 0 : 2] = 1;
+        h_answer[avoid ? 2 : 0] = 0.0;
         x = avoid ? x - 1 : x;
     } else {
-        h_answer[avoid ? 2 : 1] = 1;
+        h_answer[1] = 0.0;
         x = avoid ? x + 1 : x;
     }
 
     if(disp.y > 0){ //Enemy at the front
-        v_answer[avoid ? 2 : 0] = 1;
+        v_answer[avoid ? 0 : 2] = 0.0;
         y = avoid ? y + 1 : y;
     } else if(disp.y < 0){ //Enemy at the back
-        v_answer[avoid ? 0 : 2] = 1;
+        v_answer[avoid ? 2 : 0] = 0.0;
         y = avoid ? y - 1 : y;
     } else {
-        v_answer[avoid ? 2 : 1] = 1;
+        v_answer[1] = 0.0;
         y = avoid ? y + 1 : y;
     }
 
@@ -404,7 +407,10 @@ bool Enemy_Learn_To_Avoid(Enemy *enemy, double deltaTime){
 
 bool Detect_Enemy_Collisions(Enemy *enemy, double deltaTime){
 
-    float dist = calc_mag(current_ammo->position, enemy->position);
+    Vector2 ammo_center = Find_Center(current_ammo->position, current_ammo->size_r);
+    Vector2 enemy_center = Find_Center(enemy->position, enemy->size_r);
+
+    float dist = calc_mag(ammo_center, enemy_center);
 
     float collision_min = current_ammo->size_r + enemy->size_r;
 
@@ -520,7 +526,10 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
 
     Spaceship *spaceship = spaceships[for_spaceship];
 
-    float dist = calc_mag(spaceship->position, enemy->position);
+    Vector2 spaceship_center = Find_Center(spaceship->position, spaceship->size_r);
+    Vector2 enemy_center = Find_Center(enemy->position, enemy->size_r);
+
+    float dist = calc_mag(spaceship_center, enemy_center);
 
     float collision_min = spaceship->size_r + enemy->size_r;
 
@@ -530,7 +539,7 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
 
     }
 
-    if(dist < collision_min){
+    if(dist < collision_min + ROOM_TO_ESCAPE){
         //Learn_To_Approach(enemy, spaceships[for_spaceship], false);
 
         if(spaceship->snapshots && spaceship->snapshots->head){
@@ -575,6 +584,7 @@ bool Find_Closest_Enemy(Enemy *enemy, double deltaTime){
 
     if(closest_enemy == NULL){
         closest_enemy = enemy;
+        spaceships[for_spaceship]->locked_target = enemy;
         return false;
     }
 
@@ -583,14 +593,19 @@ bool Find_Closest_Enemy(Enemy *enemy, double deltaTime){
     //Vector2 last_disp = Calc_XY_Coord_Difference(spaceship->position, closest_enemy->position);
     //Vector2 this_disp = Calc_XY_Coord_Difference(spaceship->position, enemy->position);
 
-    float last_dist = calc_mag(spaceship->position, closest_enemy->position);
-    float this_dist = calc_mag(spaceship->position, enemy->position);
+    Vector2 spaceship_center = Find_Center(spaceship->position, spaceship->size_r);
+    Vector2 enemy_center = Find_Center(enemy->position, enemy->size_r);
+    Vector2 closest_enemy_center = Find_Center(closest_enemy->position, closest_enemy->size_r);
+
+    float last_dist = calc_mag(spaceship_center, closest_enemy_center);
+    float this_dist = calc_mag(spaceship_center, enemy_center);
 
     /*if(fabs(last_disp.x) < fabs(this_disp.x) && fabs(last_disp.y) > fabs(last_disp.y)){
         closest_enemy = enemy;
     }*/
 
     if(last_dist > this_dist){
+        closest_enemy = enemy;
         spaceships[for_spaceship]->locked_target = enemy;
     }
 
@@ -661,7 +676,10 @@ bool Detect_Surrounding_Enemies(Enemy *enemy, double deltaTime){
 
     Spaceship* spaceship = spaceships[for_spaceship];
 
-    float dist = calc_mag(spaceship->position, enemy->position);
+    Vector2 spaceship_center = Find_Center(spaceship->position, spaceship->size_r);
+    Vector2 enemy_center = Find_Center(enemy->position, enemy->size_r);
+
+    float dist = calc_mag(spaceship_center, enemy_center);
 
     if(dist <= (enemy->size_r + spaceship->size_r + ROOM_TO_ESCAPE)){
 
