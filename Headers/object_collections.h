@@ -18,7 +18,10 @@ struct Projectile_Collections{
 
 void Insert_Enemy(Enemy* enemy, Enemy_Collections* enemies){
 
-    enemy->id = Generate_Enemy_Index();
+    if(!enemy->id){
+        enemy->id = Generate_Enemy_Index();
+    }
+    
     Enemy_Node* new_node = calloc(1, sizeof(Enemy_Node));
     new_node->enemy = enemy;
 

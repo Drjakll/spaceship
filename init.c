@@ -141,6 +141,8 @@ int main(){
 
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Spaceship");
 
+    distance_size = (int)sqrt(pow(WINDOW_WIDTH/MAP_FACTOR,2) + pow(WINDOW_HEIGHT/MAP_FACTOR, 2));
+
     //data_list = calloc(1, sizeof(Data_List));
 
     Initialize_Assets();
@@ -226,15 +228,14 @@ int main(){
             }
 
             for_spaceship = i;
-            //closest_enemy = NULL;
+            closest_enemy = NULL;
             best_target_probability[i] = NULL;
 
             //Iterate_Enemies(Gather_State, delta_time, enemy_collections);
             Iterate_Enemies(Find_Best_Probability_Target, delta_time, enemy_collections);
-            Iterate_Enemies(Detect_Surrounding_Enemies, delta_time, enemy_collections);
             Iterate_Enemies(Detect_Spaceship_Collision, delta_time, enemy_collections);
 
-            spaceships[i]->locked_target = best_target_probability[i];
+            //spaceships[i]->locked_target = best_target_probability[i];
 
             if(best_target_probability[i] == NULL){
 
@@ -244,7 +245,13 @@ int main(){
 
             spaceships[i]->locked_target = best_target_probability[i];
 
+            Iterate_Enemies(Detect_Surrounding_Enemies, delta_time, enemy_collections);
+            
+            //Find the closest surrounding enemy if any
+            Iterate_Enemies(Find_Closest_Enemy, delta_time, spaceships[i]->surrounding_enemies);
+
             Vector2 displacement = {0, 0};
+            int distance = 0;
 
             if (spaceships[i]->locked_target != NULL) {
 
@@ -253,33 +260,31 @@ int main(){
                     spaceships[i]->locked_target->position
                 );
 
+                distance = (int)calc_mag(spaceships[i]->position, spaceships[i]->locked_target->position);
+
+                distance /= MAP_FACTOR;
+
+                distance = distance >= distance_size ? distance_size - 1 : distance;
+
             }
 
             spaceships[i]->learning_cooldown -= delta_time;
             spaceships[i]->avoid_enemy_timer -= delta_time;
 
             if(spaceships[i]->avoid_enemy_timer <= 0.0f && spaceships[i]->learning_cooldown <= 0.0f){
-                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], false);
+
+                bool approach = Compute_Approach(&coordinate_prob[i].approach_prob[distance]);
+
+                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], approach);
                 spaceships[i]->learning_cooldown = LEARNING_CD;
+
             }
 
-            int limit_x = 2 * WINDOW_WIDTH / MAP_FACTOR;
-            int limit_y = 2 * WINDOW_HEIGHT / MAP_FACTOR;
+            Vector2 coord = Normalize(displacement);
 
-            displacement.x /= MAP_FACTOR;
-            displacement.y /= MAP_FACTOR;
 
-            displacement.x += (limit_x/2);
-            displacement.y += (limit_y/2);
-
-            int x = (int)(displacement.x) - 1;
-            int y = (int)(displacement.y) - 1;
-
-            x = x < 0 ? 0 : x;
-            y = y < 0 ? 0 : y;
-
-            x = x >= limit_x ? limit_x - 1 : x;
-            y = y >= limit_y ? limit_y - 1 : y;
+            int x = (int)coord.x;
+            int y = (int)coord.y;
 
             spaceships[i]->scp->horizontal = coordinate_prob[i].move_prob_h[x][y];
             spaceships[i]->scp->vertical = coordinate_prob[i].move_prob_v[x][y];
@@ -304,7 +309,7 @@ int main(){
 
         }
 
-        Iterate_Enemies(Enemy_Learn_To_Avoid, delta_time, enemy_collections);
+        //Iterate_Enemies(Enemy_Learn_To_Avoid, delta_time, enemy_collections);
         
 
         BeginDrawing();
@@ -348,7 +353,7 @@ int main(){
 
             
 
-            snprintf(time_elapsed, 25, "Time: %d", (GAME_TIME - (int)accumulated_time));
+            snprintf(time_elapsed, 25, "Time: %d", ((int)accumulated_time));
             snprintf(hit_rate, 25, "Hit Rate: %i%%", (int)(100 * ((float)enemies_hit/(float)enemies_spawned)));
 
             DrawTextEx(font, time_elapsed, (Vector2){WINDOW_WIDTH/2, 50}, 24, 1, WHITE);

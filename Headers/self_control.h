@@ -39,3 +39,16 @@ int Compute_Action(Ship_Ctrl_Probability *scp){
 
     return move;
 }
+
+bool Compute_Approach(Ship_Ctrl_Approach_Prob *scap){
+
+    int yes_approach = GetRandomValue(1, 100);
+    int no_approach = GetRandomValue(1, 100);
+
+    if(yes_approach <= (int)(100 * scap->approach[0].probability)){
+        return true;
+    } else {
+        return false;
+    }
+
+}

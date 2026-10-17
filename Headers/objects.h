@@ -125,7 +125,7 @@ Enemy *Aliencraft_Type_1(){
     enemy->health = ENEMY_HEALTH * 0.5f;
     enemy->damage = 5;
     enemy->size_r = ENEMY_RADIUS;
-    enemy->acceleration = 100.0f;
+    enemy->acceleration = ENEMY_VERTICAL_ACCELERATION;
     enemy->FlightPath = AccelerateZigZagVPath;
     enemy->name = name;
     enemy->dead = false;
@@ -159,7 +159,7 @@ Enemy *Aliencraft_Type_2(){
     enemy->health = ENEMY_HEALTH * 0.75f;
     enemy->damage = 7;
     enemy->size_r = ENEMY_RADIUS;
-    enemy->acceleration = 100.0f;
+    enemy->acceleration = ENEMY_VERTICAL_ACCELERATION * 0.8;
     enemy->FlightPath = AccelerateZigZagVPath;
     enemy->name = name;
     enemy->dead = false;
@@ -192,7 +192,7 @@ Enemy *Aliencraft_Type_3(){
     enemy->health = ENEMY_HEALTH;
     enemy->damage = 10;
     enemy->size_r = ENEMY_RADIUS;
-    enemy->acceleration = 100.0f;
+    enemy->acceleration = ENEMY_VERTICAL_ACCELERATION * 0.6;
     enemy->FlightPath = AccelerateZigZagVPath;
     enemy->name = name;
     enemy->dead = false;

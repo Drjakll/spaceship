@@ -514,6 +514,25 @@ cJSON* Generate_Entry(int x, int y, Reg_Data* rd, int weight_size){
 
 }
 
+cJSON* Generate_Entry1D(int x, Reg_Data* rd, int weight_size){
+    cJSON *json = cJSON_CreateObject();
+    cJSON *array = cJSON_CreateArray();
+
+    cJSON_AddItemToObject(json, "dist", cJSON_CreateNumber(x));
+    cJSON_AddItemToObject(json, "bias", cJSON_CreateNumber(rd->bias));
+    cJSON_AddItemToObject(json, "z", cJSON_CreateNumber(rd->z));
+    cJSON_AddItemToObject(json, "exp_e", cJSON_CreateNumber(rd->exp_e));
+    cJSON_AddItemToObject(json, "probability", cJSON_CreateNumber(rd->probability));
+
+    for(int i = 0; i < weight_size; i++){
+        cJSON_AddItemToArray(array, cJSON_CreateNumber(rd->weight[i]));
+    }
+
+    cJSON_AddItemToObject(json, "weight", array);
+
+    return json;
+}
+
 void Save(Coordinate_Probability* cp, int i){
 
     int x = 2 * WINDOW_WIDTH / MAP_FACTOR;
@@ -523,6 +542,7 @@ void Save(Coordinate_Probability* cp, int i){
     cJSON *shoot = cJSON_CreateArray();
     cJSON *move_h = cJSON_CreateArray();
     cJSON *move_v = cJSON_CreateArray();
+    cJSON *approach = cJSON_CreateArray();
     cJSON *whole_json = cJSON_CreateObject();
 
     for(int i = 0; i < x; i++){
@@ -547,9 +567,21 @@ void Save(Coordinate_Probability* cp, int i){
         }
     }
 
+    for(int i = 0; i < distance_size; i++){
+
+        for(int j = 0; j < 2; j++){
+
+            cJSON* to_approach = Generate_Entry1D(i, &cp->approach_prob[i].approach[j], 2);
+
+            cJSON_AddItemToArray(approach, to_approach);
+
+        }
+    }
+
     cJSON_AddItemToObject(whole_json, "shoot", shoot);
     cJSON_AddItemToObject(whole_json, "move_h", move_h);
     cJSON_AddItemToObject(whole_json, "move_v", move_v);
+    cJSON_AddItemToObject(whole_json, "approach", approach);
 
     char *json_str = cJSON_Print(whole_json);
 
@@ -651,28 +683,44 @@ void Read_Data(Coordinate_Probability* cp, int i){
 
     int max_x = 2 * WINDOW_WIDTH / MAP_FACTOR;
     int max_y = 2 * WINDOW_HEIGHT / MAP_FACTOR;
-    const char *names[] = {"shoot", "move_h", "move_v"};
+    const char *names[] = {"shoot", "move_h", "move_v", "approach"};
 
-    for(int section = 0; section < 3; section++){
+    for(int section = 0; section < 4; section++){
         
         cJSON *array = cJSON_GetObjectItemCaseSensitive(json, names[section]);
 
+        if(!array){
+            continue;
+        }
+
         int actions = section == 0 ? 2 : 3;
+        actions = section == 3 ? 2 : actions;
 
         int count = cJSON_GetArraySize(array);
 
         for(int i = 0; i < count; i++){
 
             cJSON *item = cJSON_GetArrayItem(array, i);
-            cJSON *x_item = cJSON_GetObjectItemCaseSensitive(item, "x");
-            cJSON *y_item = cJSON_GetObjectItemCaseSensitive(item, "y");
-            if(!cJSON_IsNumber(x_item) || !cJSON_IsNumber(y_item)){
+            cJSON *y_item;
+            cJSON *x_item;
+
+            if(section < 3){
+                x_item = cJSON_GetObjectItemCaseSensitive(item, "x");
+                y_item = cJSON_GetObjectItemCaseSensitive(item, "y");
+            }
+            else{
+                x_item = cJSON_GetObjectItemCaseSensitive(item, "dist");
+            }
+
+            if(!cJSON_IsNumber(x_item) || (section < 3 && !cJSON_IsNumber(y_item))){
                 continue;
             }
+            
+
             double x_value = x_item->valuedouble;
-            double y_value = y_item->valuedouble;
+            double y_value = section < 3 ? y_item->valuedouble : 0 ;
             if(!isfinite(x_value) || !isfinite(y_value) ||
-               x_value < 0 || x_value >= max_x || y_value < 0 || y_value >= max_y ||
+               x_value < 0 || x_value >= (section == 3  ? distance_size : max_x) || y_value < 0 || y_value >= max_y ||
                floor(x_value) != x_value || floor(y_value) != y_value){
                 continue;
             }
@@ -684,11 +732,14 @@ void Read_Data(Coordinate_Probability* cp, int i){
                 rd = &cp->shoot_prob[x][y].shoot[index];
             } else if(section == 1){
                 rd = &cp->move_prob_h[x][y].move[index];
-            } else {
+            } else if(section == 2){
                 rd = &cp->move_prob_v[x][y].move[index];
+            } else {
+                rd = &cp->approach_prob[x].approach[index];
             }
             Add_Reg_Data(rd, item, actions);
         }
     }
+
     cJSON_Delete(json);
 }

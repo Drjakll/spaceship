@@ -22,6 +22,7 @@ typedef struct Ship_Ctrl_Move_Prob Ship_Ctrl_Move_Prob;
 typedef struct Ship_Ctrl_Shoot_Prob Ship_Ctrl_Shoot_Prob;
 typedef struct Coordinate_Probability Coordinate_Probability;
 typedef struct Spaceship_State Spaceship_State;
+typedef struct Ship_Ctrl_Approach_Prob Ship_Ctrl_Approach_Prob;
 
 void Learn_To_Shoot(long, Ammo*, bool);
 
@@ -65,6 +66,8 @@ Ship_Ctrl_Probability *ship_ctrl_prob[NUM_OF_AGENTS];
 Projectile_Data_List *current_projectile_data_list = NULL;
 
 Coordinate_Probability* coordinate_prob = NULL;
+
+int distance_size = 0;
 
 double current_time = 0.0f;
 

@@ -108,7 +108,7 @@ void Surface_Area_Move(int radius, Ship_Ctrl_Move_Prob scmp_, Vector2 center, Sh
     }
 }
 
-void Learn(Enemy_Data *enemy_data, Ammo *ammo, int shoot_answer[], int h_answer[], int v_answer[]){
+void Learn(Enemy_Data *enemy_data, Ammo *ammo, float shoot_answer[], float h_answer[], float v_answer[]){
 
 
     ammo->end_snapshot = current_game_snapshot;
@@ -141,7 +141,7 @@ void Learn(Enemy_Data *enemy_data, Ammo *ammo, int shoot_answer[], int h_answer[
 
     Ship_Ctrl_Shoot_Prob* shoot_prob = &coordinate_prob[ammo->belongs_to].shoot_prob[x][y];
 
-    float input[] = {(2.0f * x) / (float)(limit_x), (2.0f * y) / (float)(limit_y)};
+    float input[] = {(2.0f)* (1.0f -  (x / (float)(limit_x))), (2.0f)*(1.0f - (y / (float)(limit_y)))};
 
     Multi_Logistic_Regression(shoot_prob->shoot, learning_rate, shoot_answer, input, 2, 2);
 
@@ -185,8 +185,6 @@ void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
         return;
     }
 
-    //Vector2 disp = Calc_XY_Coord_Difference(ammo->initial_spaceship_pos, enemy_data->position);
-
     int belongs_to = ammo->belongs_to;
 
     int keydown = ammo->start_snapshot->keys_down[belongs_to];
@@ -197,9 +195,9 @@ void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
         printf("don't shoot!\n");
     }
 
-    int shoot_answer[] = {to_shoot ? 1 : 0, to_shoot ? 0 : 1};
-    int h_answer[] = {0, 0, 0};
-    int v_answer[] = {0, 0, 0};
+    float shoot_answer[] = {to_shoot ? 1 : 0, to_shoot ? 0 : 1};
+    float h_answer[] = {0, 0, 0};
+    float v_answer[] = {0, 0, 0};
 
     if(keydown & LEFT){
         h_answer[to_shoot ? 0 : 2] = 1;
@@ -222,7 +220,9 @@ void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
 }
 
 
-void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool avoid){
+void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
+
+    bool avoid = !approach;
 
     if(!enemy){
         return;
@@ -231,7 +231,7 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool avoid){
     //printf("approaching %li\n", enemy->id);
 
     if(avoid){
-        spaceship->avoid_enemy_timer = 3.0f;
+        //spaceship->avoid_enemy_timer = 3.0f;
     }
 
     Vector2 disp = Calc_XY_Coord_Difference(spaceship->position, enemy->position);
@@ -245,15 +245,19 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool avoid){
     int x = (int)(coord.x);
     int y = (int)(coord.y);
 
+    int distance = (int)calc_mag(spaceship->position, enemy->position);
+    distance /= MAP_FACTOR;
 
-    float input[] = {(2.0f * x) / (limit_x), (2.0f * y) / (limit_y)};
+    distance = distance >= distance_size ? distance_size - 1 : distance;
+
+    float input[] = { 2.0f * (1.0f - (x) / (limit_x)), 2.0f* (1.0f - (y) / (limit_y))};
 
     Ship_Ctrl_Move_Prob* scmp_h = &coordinate_prob[for_spaceship].move_prob_h[x][y];
     Ship_Ctrl_Move_Prob* scmp_v = &coordinate_prob[for_spaceship].move_prob_v[x][y];
-    //Ship_Ctrl_Shoot_Prob* shoot_prob = &coordinate_prob[for_spaceship].shoot_prob[x][y];
+    Ship_Ctrl_Approach_Prob* approach_prob = &coordinate_prob[for_spaceship].approach_prob[distance];
     
-    int h_answer[] = {0,0,0};
-    int v_answer[] = {0,0,0};
+    float h_answer[] = {0,0,0};
+    float v_answer[] = {0,0,0};
 
     if(!avoid){
         avoid = scmp_h->avoid_zone;
@@ -282,28 +286,22 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool avoid){
     }
 
 
+    float awareness = (float)distance/(ENEMY_AWARENESS_RADIUS/MAP_FACTOR);
 
-    //int shoot_answer[2] = {0, 1};
+    float avoidence = fmaxf(0.0f, 1.0f - awareness);    
 
+    float approach_input[] = {(float)distance/distance_size};
+    float approach_answer[] = {1.0f - avoidence,  avoidence};
     
 
-    float lr = learning_rate;
-
-    if(avoid){
-        float distance = sqrt(disp.x*disp.x + disp.y*disp.y);
-
-        float danger_radius = 200.0f;
-        float closeness = fmaxf(0.0f, 1 - distance/danger_radius);    
-        lr *= (1.0f + 3.0f * closeness);
-    }
-
     
-    Multi_Logistic_Regression(scmp_h->move, lr, h_answer, input, 3, 2);
-    Multi_Logistic_Regression(scmp_v->move, lr, v_answer, input, 3, 2);
-    //Multi_Logistic_Regression(shoot_prob->shoot, lr, shoot_answer, input, 2, 2);
+    Multi_Logistic_Regression(scmp_h->move, learning_rate, h_answer, input, 3, 2);
+    Multi_Logistic_Regression(scmp_v->move, learning_rate, v_answer, input, 3, 2);
+    Multi_Logistic_Regression(approach_prob->approach, learning_rate, approach_answer, approach_input, 2, 1);
 
 
     //Being more cautious about getting close to the enemy target if avoid tag is triggered
+    /*
     if(avoid){
         scmp_h->avoid_zone = true;
         scmp_v->avoid_zone = true;
@@ -317,15 +315,15 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool avoid){
         scmp_h = &coordinate_prob[for_spaceship].move_prob_h[x][y];
         scmp_v = &coordinate_prob[for_spaceship].move_prob_v[x][y];
 
-        input[0] = (2.0f * x / limit_x);
-        input[1] = (2.0f * y / limit_y);
+        input[0] = 1.0f - ((float)x/limit_x);
+        input[1] = 1.0f - ((float)y/limit_y);
 
         Multi_Logistic_Regression(scmp_h->move, lr, h_answer, input, 3, 2);
         Multi_Logistic_Regression(scmp_v->move, lr, v_answer, input, 3, 2);
 
         scmp_h->avoid_zone = true;
         scmp_v->avoid_zone = true;
-    }
+    }*/
 
 }
 
@@ -478,7 +476,7 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
     }
 
     if(dist < collision_min){
-        Learn_To_Approach(enemy, spaceships[for_spaceship], true);
+        Learn_To_Approach(enemy, spaceships[for_spaceship], false);
     }
 
     if(spaceship->health <= 0.0f){
@@ -510,7 +508,7 @@ bool Gather_State(Enemy *enemy, double deltaTime ){
 bool Find_Closest_Enemy(Enemy *enemy, double deltaTime){
 
     if(enemy->dead){
-        return false;
+        //return false;
     }
 
     if(closest_enemy == NULL){
@@ -531,7 +529,7 @@ bool Find_Closest_Enemy(Enemy *enemy, double deltaTime){
     }*/
 
     if(last_dist > this_dist){
-        closest_enemy = enemy;
+        spaceships[for_spaceship]->locked_target = enemy;
     }
 
     return false;
@@ -588,7 +586,8 @@ bool Find_Best_Probability_Target(Enemy *enemy, double deltaTime){
     float new_pts_worth = enemy->points_worth;
     float old_pts_worth = best_target_probability[for_spaceship]->points_worth;
 
-    if( new_prob * new_pts_worth/new_dist > old_prob * old_pts_worth/old_dist){
+    if( new_prob * new_pts_worth/(new_dist) > 
+        old_prob * old_pts_worth/(old_dist)){
         best_target_probability[for_spaceship] = enemy;
     }
 
@@ -602,11 +601,11 @@ bool Detect_Surrounding_Enemies(Enemy *enemy, double deltaTime){
 
     float dist = calc_mag(spaceship->position, enemy->position);
 
-    if(dist <= enemy->size_r + spaceship->size_r + ROOM_TO_ESCAPE){
+    if(dist <= (enemy->size_r + spaceship->size_r + ROOM_TO_ESCAPE)){
 
-        //Insert_Enemy(enemy, spaceship->surrounding_enemies);
-        Learn_To_Approach(enemy, spaceship, true);
-
+        Insert_Enemy(enemy, spaceship->surrounding_enemies);
+        //Learn_To_Approach(enemy, spaceship, false);
+        //spaceship->locked_target = enemy;
     }
     
     return false;
