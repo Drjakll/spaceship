@@ -201,6 +201,7 @@ struct Spaceship_Data {
 
 //Overall data template
 struct Data{
+    unsigned int reference_count;
     int keys_down;
     int all_keysdown[NUM_OF_AGENTS];
     int current_time_ms;
@@ -211,6 +212,45 @@ struct Data{
     Projectile_Data_List projectile_data_list;
     
 };
+
+/* Only heap snapshots returned by Create_Snapshot use reference counting. */
+void Retain_Snapshot(Data* snapshot){
+
+    if(snapshot) snapshot->reference_count++;
+    
+}
+
+void Release_Snapshot(Data* snapshot){
+
+    if(!snapshot) 
+        return;
+
+    assert(snapshot->reference_count > 0);
+
+    if(--snapshot->reference_count != 0) 
+        return;
+
+    Enemy_Data_Node* enemy = snapshot->enemy_data_list.head;
+
+    while(enemy){
+        Enemy_Data_Node* next = enemy->next;
+        free(enemy);
+        enemy = next;
+    }
+
+    Projectile_Data_Node* projectile = snapshot->projectile_data_list.head;
+
+    while(projectile){
+        Projectile_Data_Node* next = projectile->next;
+        free(projectile);
+        projectile = next;
+    }
+
+    free(snapshot->spaceship_data);
+
+    /* current_scores is borrowed from the game. */
+    free(snapshot);
+}
 
 struct Data_Node {
     struct Data_Node *next;
@@ -329,182 +369,6 @@ char* Iterate_Data(Data_List list, char* (*callback)(Data)){
 }
 
 
-/*
-char* Extract_Enemy_Data_To_Str_JSON(Enemy_Data data){
-
-    char* text = malloc(300);
-
-    snprintf(text, 300,
-                    "\t\t{\n"
-                        "\t\t\t\"health\": %f,\n"
-                        "\t\t\t\"size\": %f,\n"
-                        "\t\t\t\"dead\": %d,\n"
-                        "\t\t\t\"name\": \"%s\",\n"
-                        "\t\t\t\"velocity\": {\n"
-                            "\t\t\t\t\"x\": %f,\n"
-                            "\t\t\t\t\"y\": %f\n"
-                        "\t\t\t},\n"
-                        "\t\t\t\"position\": {\n"
-                            "\t\t\t\t\"x\": %f,\n"
-                            "\t\t\t\t\"y\": %f\n"
-                        "\t\t\t}\n"
-                    "\t\t},\n",
-        data.health,
-        data.size_radius,
-        data.dead,
-        data.name,
-        data.velocity.x,
-        data.velocity.y,
-        data.position.x,
-        data.position.y
-    );
-
-    return text;
-}
-
-char* Extract_Projectile_Data_To_Str_JSON(Projectile_Data data){
-
-    char* text = malloc(200);
-
-    snprintf(text, 200, 
-                    "\t\t{\n"
-                        "\t\t\t\"damage\": %f,\n"
-                        "\t\t\t\"size\": %f,\n"
-                        "\t\t\t\"velocity\": {\n"
-                            "\t\t\t\t\"x\": %f,\n"
-                            "\t\t\t\t\"y\": %f\n"
-                        "\t\t\t},\n"
-                        "\t\t\t\"position\": {\n"
-                            "\t\t\t\t\"x\": %f,\n"
-                            "\t\t\t\t\"y\": %f\n"
-                        "\t\t\t}\n"
-                    "\t\t},\n",
-        data.damage,
-        data.size_radius,
-        data.velocity.x,
-        data.velocity.y,
-        data.position.x,
-        data.position.y
-    );
-
-    return text;
-}
-
-char* Convert_Data_To_String(Data data){
-
-    int key_strokes = data.keys_down;
-    int time = data.current_time_ms;
-    int frame_number = data.frame_number;
-    int current_score = data.current_scores;
-
-    Spaceship_Data spaceship_data = data.spaceship_data;
-
-    float spaceship_health = spaceship_data.health;
-    float spaceship_radius = spaceship_data.size_radius;
-    float spaceship_weapon_cd = spaceship_data.current_weapon_cd;
-    Vector2 spaceship_location = spaceship_data.position;
-
-    Enemy_Data_List enemy_data_list = data.enemy_data_list;
-    Projectile_Data_List projectile_data_list = data.projectile_data_list;
-
-    char* enemy_array = Iterate_Enemy_Data_List(enemy_data_list, Extract_Enemy_Data_To_Str_JSON);
-
-    size_t index = strlen(enemy_array);
-
-    if(index > 2){
-        enemy_array[index - 2] = '\0';
-    }
-
-    char* projectile_array = Iterate_Projectile_Data_List(projectile_data_list, Extract_Projectile_Data_To_Str_JSON);
-
-    index = strlen(projectile_array);
-
-    if(index > 2){
-        projectile_array[index - 2] = '\0';
-    }
-
-    int needed = snprintf(
-                        NULL,
-                        0,
-                        "{\n"
-                            "\t\"key_strokes\": %d,\n" 
-                            "\t\"timestamp\": %d,\n" 
-                            "\t\"score\": %d,\n"
-                            "\t\"frame_number\": %d,\n"
-                            "\t\"spaceship\": {\n"
-                                "\t\t\"health\": %f,\n"
-                                "\t\t\"size\": %f,\n"
-                                "\t\t\"weapon_cd\": %f,\n"
-                                "\t\t\"position\": {\n"
-                                    "\t\t\t\"x\": %f,\n"
-                                    "\t\t\t\"y\": %f\n"
-                                "\t\t}\n"
-                            "\t},\n"
-                            "\t\"enemies\": [\n"
-                                "%s\n"
-                            "\t],\n"
-                            "\t\"projectiles\": [\n"
-                                "%s\n"
-                            "\t]\n"
-                        "},\n", 
-                            key_strokes, 
-                            time,
-                            current_score,
-                            frame_number,
-                            spaceship_health,
-                            spaceship_radius,
-                            spaceship_weapon_cd,
-                            spaceship_location.x,
-                            spaceship_location.y,
-                            enemy_array,
-                            projectile_array
-                    );
-
-    char* text = malloc(needed + 1);
-
-    snprintf(text, needed + 1, 
-                                "{\n"
-                                    "\t\"key_strokes\": %d,\n" 
-                                    "\t\"timestamp\": %d,\n" 
-                                    "\t\"score\": %d,\n"
-                                    "\t\"frame_number\": %d,\n"
-                                    "\t\"spaceship\": {\n"
-                                        "\t\t\"health\": %f,\n"
-                                        "\t\t\"size\": %f,\n"
-                                        "\t\t\"weapon_cd\": %f,\n"
-                                        "\t\t\"position\": {\n"
-                                            "\t\t\t\"x\": %f,\n"
-                                            "\t\t\t\"y\": %f\n"
-                                        "\t\t}\n"
-                                   "\t},\n"
-                                   "\t\"enemies\": [\n"
-                                        "%s\n"
-                                    "\t],\n"
-                                   "\t\"projectiles\": [\n"
-                                        "%s\n"
-                                   "\t]\n"
-                                "},\n", 
-                                    key_strokes, 
-                                    time,
-                                    current_score,
-                                    frame_number,
-                                    spaceship_health,
-                                    spaceship_radius,
-                                    spaceship_weapon_cd,
-                                    spaceship_location.x,
-                                    spaceship_location.y,
-                                    enemy_array,
-                                    projectile_array
-                                );
-
-    free(projectile_array);
-    free(enemy_array);
-
-    return text;
-
-}
-*/
-
 void Create_Snapshot_Of_Enemies_For_Spaceship(Spaceship *spaceship, int* keysdown, double delta_time){
 
     Enemy_Data_List *enemies_data = calloc(1, sizeof(Enemy_Data_List));
@@ -584,6 +448,11 @@ Data* Create_Snapshot(Spaceship *spaceships[], int frame_counts, int scores[], d
         data_entry->all_keysdown[i] = keysdown[i];
     }
 
+    data_entry->reference_count = 1;
+    current_enemy_data_list = NULL;
+    current_projectile_data_list = NULL;
+    free(enemies_data);
+    free(projectiles_data);
     return data_entry;
 }
 

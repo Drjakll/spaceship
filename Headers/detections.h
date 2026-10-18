@@ -110,8 +110,6 @@ void Surface_Area_Move(int radius, Ship_Ctrl_Move_Prob scmp_, Vector2 center, Sh
 
 void Learn(Enemy_Data *enemy_data, Spaceship_Data* spaceship_data, Ammo *ammo, float shoot_answer[], float h_answer[], float v_answer[]){
 
-    if(ammo)
-        ammo->end_snapshot = current_game_snapshot;
 
     Vector2 displacement = {.x = 0, .y = 0};
 
@@ -128,23 +126,12 @@ void Learn(Enemy_Data *enemy_data, Spaceship_Data* spaceship_data, Ammo *ammo, f
     int limit_x =  2 * WINDOW_WIDTH/(MAP_FACTOR);
     int limit_y =  2 * WINDOW_HEIGHT/(MAP_FACTOR); 
 
-    displacement.x /= (int)(MAP_FACTOR);
-    displacement.y /= (int)(MAP_FACTOR);
-
-    displacement.x = (int)(displacement.x + limit_x/2) - 1;
-    displacement.y = (int)(displacement.y + limit_y/2) - 1;
+    displacement = Normalize(displacement);
     
     int x = (int)displacement.x;
     int y = (int)displacement.y;
 
-    x = x < 0 ? 0 : x;
-    y = y < 0 ? 0 : y;
-
-    x = x >= limit_x ? limit_x - 1 : x;
-    y = y >= limit_y ? limit_y - 1 : y;
-
     int coord_index = ammo ? ammo->belongs_to : for_spaceship;
-
 
     Ship_Ctrl_Shoot_Prob* shoot_prob = &coordinate_prob[coord_index].shoot_prob[x][y];
 
@@ -354,6 +341,61 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
 
 }
 
+void Encouragement(Spaceship_Data *spaceship_data, Enemy_Data *enemy_data, int ctrl_inputs){
+
+    float move_h[] = {0.0f, 0.0f, 0.0f};
+    float move_v[] = {0.0f, 0.0f, 0.0f};
+    float shoot[] = {0.0f, 0.0f};
+
+    if(ctrl_inputs & LEFT){
+        move_h[0] = 1.0f;
+    } else if(ctrl_inputs & RIGHT){
+        move_h[2] = 1.0f;
+    } else {
+        move_h[1] = 1.0f;
+    }
+
+    if(ctrl_inputs & UP){
+        move_v[0] = 1.0f;
+    } else if(ctrl_inputs & DOWN){
+        move_v[2] = 1.0f;
+    } else {
+        move_v[1] = 1.0f;
+    }
+
+    if(ctrl_inputs & SHOOT){
+        shoot[0] = 1.0f;
+    } else {
+        shoot[1] = 1.0f;
+    }
+
+    Learn(enemy_data, spaceship_data, NULL, shoot, move_h, move_v);
+
+}
+
+void Successfully_Avoided_Target(Enemy* target, Spaceship *spaceship){
+
+    if(!spaceship->snapshots || !spaceship->snapshots->head){
+        return;
+    }
+
+    Data* snapshot = &spaceship->snapshots->head->data;
+
+    Enemy_Data_List enemy_data_list = snapshot->enemy_data_list;
+
+    Enemy_Data* enemy_data = Find_Target_Enemy_Data(enemy_data_list, target->id);
+
+    if(!enemy_data){
+        return;
+    }
+
+    int inputs = snapshot->keys_down;
+    Spaceship_Data* spaceship_data = snapshot->spaceship_data;
+
+    Encouragement(spaceship_data, enemy_data, inputs);
+
+}
+
 bool Enemy_Learn_To_Avoid(Enemy *enemy, double deltaTime){
 
     if(enemy->dead){
@@ -543,7 +585,9 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
 
     }
 
-    if(dist < collision_min + ROOM_TO_ESCAPE){
+    Vector2 disp = Calc_XY_Coord_Difference(spaceship_center, enemy_center);
+
+    if(disp.y > 0 && dist < collision_min + ROOM_TO_ESCAPE){
         //Learn_To_Approach(enemy, spaceships[for_spaceship], false);
 
         if(spaceship->snapshots && spaceship->snapshots->head){
@@ -552,6 +596,7 @@ bool Detect_Spaceship_Collision(Enemy *enemy, double deltaTime){
 
             Learn_What_Not_To_Do(snapshot, enemy->id);
         }
+
     }
 
     if(spaceship->health <= 0.0f){

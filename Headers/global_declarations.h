@@ -25,6 +25,8 @@ typedef struct Spaceship_State Spaceship_State;
 typedef struct Ship_Ctrl_Approach_Prob Ship_Ctrl_Approach_Prob;
 
 void Learn_To_Shoot(long, Ammo*, bool);
+void Retain_Snapshot(Data*);
+void Release_Snapshot(Data*);
 
 
 int score[NUM_OF_AGENTS] = {0};

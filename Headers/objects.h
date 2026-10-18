@@ -11,7 +11,6 @@ struct Ammo {
     long id;
     double time_spawned;
     Vector2 initial_spaceship_pos;
-    Data *end_snapshot;
     Data *start_snapshot;
     long locked_target_id;
 };
@@ -235,6 +234,7 @@ Ammo* ShootMissile(float cooldown, Vector2 init_pos, int belongs_to){
     ammo->belongs_to = belongs_to;
     ammo->time_spawned = current_time;
     ammo->start_snapshot = current_game_snapshot;
+    Retain_Snapshot(ammo->start_snapshot);
     ammo->initial_spaceship_pos = spaceships[belongs_to]->position;
     Enemy *target = spaceships[belongs_to]->locked_target;
     ammo->locked_target_id = target ? target->id : 0;

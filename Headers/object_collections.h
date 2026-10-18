@@ -145,6 +145,7 @@ bool Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
         }
 
         projectiles->head = temp->next;
+        Release_Snapshot(a->start_snapshot);
         free(a->velocity);
         free(a);
         free(temp);
@@ -175,6 +176,7 @@ bool Iterate_Projectiles(bool (*callback)(Ammo*, double), double deltaTime){
             Projectile_Node *temp = ptr->next;
             Ammo *a = temp->ammo;
 
+            Release_Snapshot(a->start_snapshot);
             free(a->velocity);
             free(a);
 

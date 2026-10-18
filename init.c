@@ -1,4 +1,5 @@
 #include <raylib.h>
+#include <assert.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -283,9 +284,22 @@ int main(){
 
                 //bool approach = Compute_Approach(&coordinate_prob[i].approach_prob[distance]);
 
-                Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], closest_enemy == NULL);
+                //Learn_To_Approach(spaceships[i]->locked_target, spaceships[i], closest_enemy == NULL);
                 //spaceships[i]->learning_cooldown = LEARNING_CD;
 
+            }
+
+            if(closest_enemy != NULL){
+                Vector2 spaceship_center = Find_Center(spaceships[i]->position, spaceships[i]->size_r);
+                Vector2 enemy_center = Find_Center(closest_enemy->position, closest_enemy->size_r);
+
+                Vector2 disp = Calc_XY_Coord_Difference(spaceship_center, enemy_center);
+
+                float dist = calc_mag(spaceship_center, enemy_center);
+
+                if(disp.y < 0 && dist > spaceships[i]->size_r + closest_enemy->size_r){
+                    Successfully_Avoided_Target(closest_enemy, spaceships[i]);
+                } 
             }
             
 
@@ -326,6 +340,7 @@ int main(){
 
         Data* data = Create_Snapshot(spaceships, frame_count, score, delta_time, keys_down);
 
+        Release_Snapshot(current_game_snapshot);
         current_game_snapshot = data;
 
 
@@ -382,6 +397,14 @@ int main(){
 
         for(int i = 0; i < NUM_OF_AGENTS; i++){
 
+            Enemy_Node* node = spaceships[i]->surrounding_enemies->head;
+
+            while(node){
+                Enemy_Node* next = node->next;
+                free(node);
+                node = next;
+            }
+
             spaceships[i]->surrounding_enemies->head = NULL;
             spaceships[i]->surrounding_enemies->tail = NULL;
             spaceships[i]->surrounding_enemies->count = 0;
@@ -393,6 +416,7 @@ int main(){
         }
 
         if(!keep_going){
+            free(keys_down);
             break;
         }
 
@@ -401,7 +425,22 @@ int main(){
 
         accumulated_time += delta_time * 1000;
 
+        free(keys_down);
+
     }
+
+    /* Release references held by missiles still alive when the game ends. */
+    while(projectiles->head){
+        Projectile_Node* node = projectiles->head;
+        projectiles->head = node->next;
+        Release_Snapshot(node->ammo->start_snapshot);
+        free(node->ammo->velocity);
+        free(node->ammo);
+        free(node);
+    }
+    projectiles->tail = NULL;
+    Release_Snapshot(current_game_snapshot);
+    current_game_snapshot = NULL;
 
     for(int i = 0; i < NUM_OF_AGENTS; i++){
         Save(&coordinate_prob[i], i);
