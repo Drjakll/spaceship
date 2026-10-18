@@ -1,6 +1,6 @@
-#include <raylib.h>
 #include <assert.h>
 #include <math.h>
+#include <raylib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,336 +8,708 @@
 #include <string.h>
 
 /* Independent fixed-step environment. Rendering never changes simulation speed. */
-#define W 1000
-#define H 1000
-#define ENEMIES 12
-#define BULLETS 32
-#define BLASTS 128
-#define ACTIONS 9
-#define STATES (7*7*3*3*3*3*3)
-#define LIMIT 1800
+#define WINDOW_WIDTH 1000
+#define WINDOW_HEIGHT 1000
+#define MAX_ENEMIES 12
+#define MAX_BULLETS 32
+#define MAX_EXPLOSIONS 128
+#define ACTION_COUNT 9
+#define STATE_COUNT (7 * 7 * 3 * 3 * 3 * 3 * 3)
+#define MAX_EPISODE_STEPS 1800
 #define START_HEALTH 1000
-#define DT (1.0f/30.0f)
-typedef struct { float health,damage,acceleration,cooldown; int points; } EnemyStats;
-static const EnemyStats enemy_stats[3]={{25,5,90,1,2},{37.5f,7,72,1.2f,4},{50,10,54,1.4f,8}};
-#define MODEL "models/zigzag_policy.bin"
-typedef struct { float x,y; bool active; int type,ttl; float hp,attack,vy,vx,patrol_left,patrol_right; } Body;
+#define SIMULATION_TIME_STEP (1.0f / 30.0f)
 typedef struct {
-    float x,y; int health,tick,kills,hits,shots,landed,spawned,cooldown,score; float spawn;
-    bool done; Body enemies[ENEMIES], bullets[BULLETS], blasts[BLASTS];
-} Game;
-typedef struct { float q[STATES][ACTIONS]; uint32_t episodes; } Agent;
-static Agent agent;
-static uint32_t rng=12345;
-static uint32_t random_u(void) { rng ^= rng<<13; rng ^= rng>>17; rng ^= rng<<5; return rng; }
-static float random_f(void) { return (random_u()>>8)*(1.0f/16777216.0f); }
-static float clamp(float x,float lo,float hi) { return x<lo?lo:x>hi?hi:x; }
-static void reset(Game *g) { *g=(Game){.x=W/2,.y=H-90,.health=START_HEALTH}; }
-static int bucket(float d) {
-    return d < -240 ? 0 : d < -90 ? 1 : d < -25 ? 2 : d < 25 ? 3 : d < 90 ? 4 : d < 240 ? 5 : 6;
+    float health;
+    float damage;
+    float acceleration;
+    float attack_cooldown_seconds;
+    int points;
+} EnemyStats;
+static const EnemyStats enemy_stats[3] = {
+    {25, 5, 90, 1, 2}, {37.5f, 7, 72, 1.2f, 4}, {50, 10, 54, 1.4f, 8}};
+#define MODEL_PATH "models/zigzag_policy.bin"
+typedef struct {
+    float x, y;
+    bool active;
+    int type, lifetime_ticks;
+    float health, attack_cooldown_remaining, velocity_y, velocity_x, patrol_left, patrol_right;
+} Entity;
+
+typedef struct {
+    float x, y;
+    int health, tick, kills, hits, shots, landed, spawned, weapon_cooldown_ticks, score;
+    float spawn_timer;
+    bool done;
+    Entity enemies[MAX_ENEMIES], bullets[MAX_BULLETS], blasts[MAX_EXPLOSIONS];
+} GameState;
+
+typedef struct {
+    float q_values[STATE_COUNT][ACTION_COUNT];
+    uint32_t episodes;
+} LearningAgent;
+static LearningAgent agent;
+static uint32_t random_seed = 12345;
+/* Xorshift generator keeps training and evaluation reproducible from a seed. */
+static uint32_t random_uint(void) {
+    random_seed ^= random_seed << 13;
+    random_seed ^= random_seed >> 17;
+    random_seed ^= random_seed << 5;
+    return random_seed;
 }
-static int state(const Game *g) {
-    float best=1e20f,dx=0,dy=0; bool found=false; int threat=0;
-    for(int i=0;i<ENEMIES;i++) if(g->enemies[i].active) {
-        float x=g->enemies[i].x-g->x,y=g->enemies[i].y-g->y,d=x*x+y*y;
-        if(d<best) { best=d; dx=x; dy=y; found=true; threat=1; }
+
+static float random_float(void) {
+    return (random_uint() >> 8) * (1.0f / 16777216.0f);
+}
+
+static float clamp_float(float x, float lo, float hi) {
+    return x < lo ? lo : x > hi ? hi : x;
+}
+
+static void reset_game(GameState *game) {
+    *game = (GameState){.x = WINDOW_WIDTH / 2, .y = WINDOW_HEIGHT - 90, .health = START_HEALTH};
+}
+
+static int displacement_bucket(float displacement) {
+    if (displacement < -240) {
+        return 0;
+    }
+    if (displacement < -90) {
+        return 1;
+    }
+    if (displacement < -25) {
+        return 2;
+    }
+    if (displacement < 25) {
+        return 3;
+    }
+    if (displacement < 90) {
+        return 4;
+    }
+    if (displacement < 240) {
+        return 5;
+    }
+    return 6;
+}
+
+/* Encode displacement, screen region, proximity, weapon cooldown, and hazard type
+ * into one index in the Q-table. Each multiplication adds a categorical feature. */
+static int encode_state(const GameState *game) {
+    float best = 1e20f, dx = 0, dy = 0;
+    bool found = false;
+    int threat = 0;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (game->enemies[i].active) {
+            float x = game->enemies[i].x - game->x, y = game->enemies[i].y - game->y,
+                  d = x * x + y * y;
+            if (d < best) {
+                best = d;
+                dx = x;
+                dy = y;
+                found = true;
+                threat = 1;
+            }
+        }
     }
     /* Explosions have larger collision radii: prioritize their effective distance. */
-    for(int i=0;i<BLASTS;i++) if(g->blasts[i].active) {
-        float x=g->blasts[i].x-g->x,y=g->blasts[i].y-g->y;
-        float surface=fmaxf(0,sqrtf(x*x+y*y)-35),d=surface*surface;
-        if(d<best) { best=d; dx=x; dy=y; found=true; threat=2; }
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (game->blasts[i].active) {
+            float x = game->blasts[i].x - game->x, y = game->blasts[i].y - game->y;
+            float surface = fmaxf(0, sqrtf(x * x + y * y) - 35), d = surface * surface;
+            if (d < best) {
+                best = d;
+                dx = x;
+                dy = y;
+                found = true;
+                threat = 2;
+            }
+        }
     }
-    int bx=(int)(g->x/(W/3.0f)),by=(int)((g->y-60)/((H-80)/3.0f));
-    if(bx>2) bx=2;
-    if(by>2) by=2;
-    int s=bucket(dx)*7+bucket(dy);
-    s=s*3+bx; s=s*3+by;
-    s=s*3+(found?(best<100*100?1:2):0);
-    s=s*3+(g->cooldown==0?0:g->cooldown<5?1:2); return s*3+threat;
+    int bx = (int)(game->x / (WINDOW_WIDTH / 3.0f)),
+        by = (int)((game->y - 60) / ((WINDOW_HEIGHT - 80) / 3.0f));
+    if (bx > 2) {
+        bx = 2;
+    }
+    if (by > 2) {
+        by = 2;
+    }
+    int state_index = displacement_bucket(dx) * 7 + displacement_bucket(dy);
+    state_index = state_index * 3 + bx;
+    state_index = state_index * 3 + by;
+    state_index = state_index * 3 + (found ? (best < 100 * 100 ? 1 : 2) : 0);
+    state_index = state_index * 3 + (game->weapon_cooldown_ticks == 0  ? 0
+                                     : game->weapon_cooldown_ticks < 5 ? 1
+                                                                       : 2);
+    return state_index * 3 + threat;
 }
-/* Nine movement actions; the ship auto-fires. Q-learning learns navigation. */
-static void explode(Game *g,Body *enemy) {
-    int slot=-1;
-    for(int i=0;i<BLASTS;i++) if(!g->blasts[i].active) { slot=i; break; }
-    assert(slot>=0); /* At most 80 spawns in a 1,800-step episode. */
-    g->blasts[slot]=(Body){.x=enemy->x,.y=enemy->y,.active=true,
-        .vy=100,.vx=1,.attack=enemy->attack};
-    enemy->active=false;
-}
-static float step(Game *g,int action) {
 
-    if(g->done) return 0;
-    assert(action>=0 && action<ACTIONS);
-    float reward=0.01f,ox=g->x,oy=g->y;
-    int mx=action%3-1,my=action/3-1;
-    /* Match the original 400 px/s ship speed; previously only 120 px/s. */
-    float speed=400.0f*DT/((mx && my)?sqrtf(2):1);
-    g->x=clamp(g->x+mx*speed,25,W-25);
-    g->y=clamp(g->y+my*speed,60,H-25);
-    if((mx && g->x==ox)||(my && g->y==oy)) reward-=0.03f;
-    if(g->cooldown>0) g->cooldown--;
-    if(g->cooldown==0) for(int i=0;i<BULLETS;i++) if(!g->bullets[i].active) {
-        g->bullets[i]=(Body){.x=g->x,.y=g->y-18,.active=true}; g->cooldown=8; g->shots++; break;
-    }
-    if((g->spawn-=DT)<=0) {
-        for(int i=0;i<ENEMIES;i++) if(!g->enemies[i].active) {
-            g->spawned++;
-            int type=(int)(random_u()%3);
-            g->enemies[i]=(Body){.x=25+random_f()*(W-50),.y=35,.active=true,.type=type,.hp=enemy_stats[type].health,.vy=10,.vx=200};
-            Body *e=&g->enemies[i];
-            e->patrol_left=fmaxf(25,e->x-175);
-            e->patrol_right=fminf(W-25,e->x+175);
+/* Destroyed enemies become moving explosions that can still damage the ship. */
+static void create_explosion(GameState *game, Entity *enemy) {
+    int slot = -1;
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (!game->blasts[i].active) {
+            slot = i;
             break;
         }
-        g->spawn+=0.75f;
     }
-    for(int i=0;i<BULLETS;i++) if(g->bullets[i].active) {
-        Body *b=&g->bullets[i]; b->y-=12;
-        if(b->y<0) b->active=false;
-    }
-    for(int i=0;i<BLASTS;i++) if(g->blasts[i].active) {
-        Body *b=&g->blasts[i]; b->vy-=DT; b->y+=b->vy*DT;
-        int band=(int)floorf(b->x)%350;
-        if(band>0 && band<10) b->vx=-b->vx;
-        b->x+=b->vx*DT;
-        if(b->y>H) { b->active=false; continue; }
-        if(b->attack>0) b->attack=fmaxf(0,b->attack-DT);
-        float dx=g->x-b->x,dy=g->y-b->y;
-        if(dx*dx+dy*dy<75*75 && b->attack==0) {
-            b->attack=0.15f; g->health--; g->hits++; reward-=5;
-            if(g->health<=0) { g->health=0; g->done=true; return reward-10; }
-        }
-    }
-    for(int i=0;i<ENEMIES;i++) if(g->enemies[i].active) {
-        Body *e=&g->enemies[i];
-        float dx=g->x-e->x,dy=g->y-e->y;
-        /* Fixed zigzag patrol: independent of ship and missile positions. */
-        e->vy+=enemy_stats[e->type].acceleration*DT;
-        e->y+=e->vy*DT;
-        e->x+=e->vx*DT;
-        if(e->patrol_right>e->patrol_left) {
-            if(e->x>=e->patrol_right) {
-                e->x=2*e->patrol_right-e->x; e->vx=-fabsf(e->vx);
-            } else if(e->x<=e->patrol_left) {
-                e->x=2*e->patrol_left-e->x; e->vx=fabsf(e->vx);
-            }
-        }
-        if(e->y>H+30) { e->active=false; reward-=1.0f; continue; }
-        if(e->attack>0) e->attack=fmaxf(0,e->attack-DT);
+    assert(slot >= 0); /* At most 80 spawns in a 1,800-step episode. */
+    game->blasts[slot] = (Entity){.x = enemy->x,
+                                  .y = enemy->y,
+                                  .active = true,
+                                  .velocity_y = 100,
+                                  .velocity_x = 1,
+                                  .attack_cooldown_remaining = enemy->attack_cooldown_remaining};
+    enemy->active = false;
+}
 
-        for(int j=0;j<BULLETS;j++) if(g->bullets[j].active) {
-            float bx=e->x-g->bullets[j].x,by=e->y-g->bullets[j].y;
-            if(bx*bx+by*by<35*35) {
-                g->bullets[j].active=false; g->landed++; reward+=0.15f;
-                if((e->hp-=10)<=0) { explode(g,e); g->kills++; g->score+=enemy_stats[e->type].points; reward+=12; break; }
+/* Actions form a 3-by-3 grid: each axis is -1, 0, or +1; action 4 stays still.
+ * The ship fires automatically, so Q-learning controls navigation only. */
+static float step_game(GameState *game, int action) {
+
+    if (game->done) {
+        return 0;
+    }
+    assert(action >= 0 && action < ACTION_COUNT);
+    float reward = 0.01f, previous_x = game->x, previous_y = game->y;
+    int move_x = action % 3 - 1, move_y = action / 3 - 1;
+    /* Normalize diagonal movement to preserve a speed of 400 pixels per second. */
+    float speed = 400.0f * SIMULATION_TIME_STEP / ((move_x && move_y) ? sqrtf(2) : 1);
+    game->x = clamp_float(game->x + move_x * speed, 25, WINDOW_WIDTH - 25);
+    game->y = clamp_float(game->y + move_y * speed, 60, WINDOW_HEIGHT - 25);
+    if ((move_x && game->x == previous_x) || (move_y && game->y == previous_y)) {
+        reward -= 0.03f;
+    }
+    if (game->weapon_cooldown_ticks > 0) {
+        game->weapon_cooldown_ticks--;
+    }
+    if (game->weapon_cooldown_ticks == 0) {
+        for (int i = 0; i < MAX_BULLETS; i++) {
+            if (!game->bullets[i].active) {
+                game->bullets[i] = (Entity){.x = game->x, .y = game->y - 18, .active = true};
+                game->weapon_cooldown_ticks = 8;
+                game->shots++;
+                break;
             }
         }
-        dx=g->x-e->x; dy=g->y-e->y;
-        if(e->active && dx*dx+dy*dy<50*50 && e->attack==0) {
-            e->attack=enemy_stats[e->type].cooldown; g->health-=(int)enemy_stats[e->type].damage; g->hits++; reward-=5;
-            if(g->health<=0) { reward-=10; g->done=true; break; }
+    }
+    if ((game->spawn_timer -= SIMULATION_TIME_STEP) <= 0) {
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            if (!game->enemies[i].active) {
+                game->spawned++;
+                int type = (int)(random_uint() % 3);
+                game->enemies[i] = (Entity){.x = 25 + random_float() * (WINDOW_WIDTH - 50),
+                                            .y = 35,
+                                            .active = true,
+                                            .type = type,
+                                            .health = enemy_stats[type].health,
+                                            .velocity_y = 10,
+                                            .velocity_x = 200};
+                Entity *enemy = &game->enemies[i];
+                enemy->patrol_left = fmaxf(25, enemy->x - 175);
+                enemy->patrol_right = fminf(WINDOW_WIDTH - 25, enemy->x + 175);
+                break;
+            }
+        }
+        game->spawn_timer += 0.75f;
+    }
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (game->bullets[i].active) {
+            Entity *entity = &game->bullets[i];
+            entity->y -= 12;
+            if (entity->y < 0) {
+                entity->active = false;
+            }
+        }
+    }
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (game->blasts[i].active) {
+            Entity *entity = &game->blasts[i];
+            entity->velocity_y -= SIMULATION_TIME_STEP;
+            entity->y += entity->velocity_y * SIMULATION_TIME_STEP;
+            int band = (int)floorf(entity->x) % 350;
+            if (band > 0 && band < 10) {
+                entity->velocity_x = -entity->velocity_x;
+            }
+            entity->x += entity->velocity_x * SIMULATION_TIME_STEP;
+            if (entity->y > WINDOW_HEIGHT) {
+                entity->active = false;
+                continue;
+            }
+            if (entity->attack_cooldown_remaining > 0) {
+                entity->attack_cooldown_remaining =
+                    fmaxf(0, entity->attack_cooldown_remaining - SIMULATION_TIME_STEP);
+            }
+            float dx = game->x - entity->x, dy = game->y - entity->y;
+            if (dx * dx + dy * dy < 75 * 75 && entity->attack_cooldown_remaining == 0) {
+                entity->attack_cooldown_remaining = 0.15f;
+                game->health--;
+                game->hits++;
+                reward -= 5;
+                if (game->health <= 0) {
+                    game->health = 0;
+                    game->done = true;
+                    return reward - 10;
+                }
+            }
+        }
+    }
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (game->enemies[i].active) {
+            Entity *enemy = &game->enemies[i];
+            float dx = game->x - enemy->x, dy = game->y - enemy->y;
+            /* Fixed zigzag patrol: independent of ship and missile positions. */
+            enemy->velocity_y += enemy_stats[enemy->type].acceleration * SIMULATION_TIME_STEP;
+            enemy->y += enemy->velocity_y * SIMULATION_TIME_STEP;
+            enemy->x += enemy->velocity_x * SIMULATION_TIME_STEP;
+            if (enemy->patrol_right > enemy->patrol_left) {
+                if (enemy->x >= enemy->patrol_right) {
+                    enemy->x = 2 * enemy->patrol_right - enemy->x;
+                    enemy->velocity_x = -fabsf(enemy->velocity_x);
+                } else if (enemy->x <= enemy->patrol_left) {
+                    enemy->x = 2 * enemy->patrol_left - enemy->x;
+                    enemy->velocity_x = fabsf(enemy->velocity_x);
+                }
+            }
+            if (enemy->y > WINDOW_HEIGHT + 30) {
+                enemy->active = false;
+                reward -= 1.0f;
+                continue;
+            }
+            if (enemy->attack_cooldown_remaining > 0) {
+                enemy->attack_cooldown_remaining =
+                    fmaxf(0, enemy->attack_cooldown_remaining - SIMULATION_TIME_STEP);
+            }
+
+            for (int j = 0; j < MAX_BULLETS; j++) {
+                if (game->bullets[j].active) {
+                    float bx = enemy->x - game->bullets[j].x, by = enemy->y - game->bullets[j].y;
+                    if (bx * bx + by * by < 35 * 35) {
+                        game->bullets[j].active = false;
+                        game->landed++;
+                        reward += 0.15f;
+                        if ((enemy->health -= 10) <= 0) {
+                            create_explosion(game, enemy);
+                            game->kills++;
+                            game->score += enemy_stats[enemy->type].points;
+                            reward += 12;
+                            break;
+                        }
+                    }
+                }
+            }
+            dx = game->x - enemy->x;
+            dy = game->y - enemy->y;
+            if (enemy->active && dx * dx + dy * dy < 50 * 50 &&
+                enemy->attack_cooldown_remaining == 0) {
+                enemy->attack_cooldown_remaining = enemy_stats[enemy->type].attack_cooldown_seconds;
+                game->health -= (int)enemy_stats[enemy->type].damage;
+                game->hits++;
+                reward -= 5;
+                if (game->health <= 0) {
+                    reward -= 10;
+                    game->done = true;
+                    break;
+                }
+            }
         }
     }
     /* Dense feedback makes near misses matter, even with 1,000 health.
        Include all hazards so escaping one enemy into another is discouraged. */
-    float danger=0;
-    for(int i=0;i<ENEMIES;i++) if(g->enemies[i].active) {
-        Body *e=&g->enemies[i];
-        float dx=e->x-g->x,dy=e->y-g->y;
-        float clearance=sqrtf(dx*dx+dy*dy)-50;
-        danger+=clamp(1-clearance/140,0,1);
-    }
-    for(int i=0;i<BLASTS;i++) if(g->blasts[i].active) {
-        Body *b=&g->blasts[i];
-        float dx=b->x-g->x,dy=b->y-g->y;
-        float clearance=sqrtf(dx*dx+dy*dy)-75;
-        danger+=clamp(1-clearance/140,0,1);
-    }
-    reward-=0.025f*danger;
-    /* Seek a firing lane below a live target, while outside contact range.
-       Only the best lane pays, so crowds cannot multiply this bonus. */
-    float firing_lane=0;
-    if(danger<0.5f) for(int i=0;i<ENEMIES;i++) if(g->enemies[i].active) {
-        Body *e=&g->enemies[i];
-        float ahead=g->y-e->y;
-        if(ahead>100 && ahead<450) {
-            float alignment=clamp(1-fabsf(g->x-e->x)/120,0,1);
-            firing_lane=fmaxf(firing_lane,alignment);
+    float danger = 0;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (game->enemies[i].active) {
+            Entity *enemy = &game->enemies[i];
+            float dx = enemy->x - game->x, dy = enemy->y - game->y;
+            float clearance = sqrtf(dx * dx + dy * dy) - 50;
+            danger += clamp_float(1 - clearance / 140, 0, 1);
         }
     }
-    reward+=0.04f*firing_lane;
-    if(++g->tick>=LIMIT) g->done=true;
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (game->blasts[i].active) {
+            Entity *entity = &game->blasts[i];
+            float dx = entity->x - game->x, dy = entity->y - game->y;
+            float clearance = sqrtf(dx * dx + dy * dy) - 75;
+            danger += clamp_float(1 - clearance / 140, 0, 1);
+        }
+    }
+    reward -= 0.025f * danger;
+    /* Seek a firing lane below a live target, while outside contact range.
+       Only the best lane pays, so crowds cannot multiply this bonus. */
+    float firing_lane = 0;
+    if (danger < 0.5f) {
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            if (game->enemies[i].active) {
+                Entity *enemy = &game->enemies[i];
+                float ahead = game->y - enemy->y;
+                if (ahead > 100 && ahead < 450) {
+                    float alignment = clamp_float(1 - fabsf(game->x - enemy->x) / 120, 0, 1);
+                    firing_lane = fmaxf(firing_lane, alignment);
+                }
+            }
+        }
+    }
+    reward += 0.04f * firing_lane;
+    if (++game->tick >= MAX_EPISODE_STEPS) {
+        game->done = true;
+    }
     return reward;
 }
-static int choose(int s,float epsilon) {
-    if(random_f()<epsilon) return (int)(random_u()%ACTIONS);
-    int best=0,n=1;
-    for(int a=1;a<ACTIONS;a++) {
-        if(agent.q[s][a]>agent.q[s][best]) { best=a; n=1; }
-        else if(agent.q[s][a]==agent.q[s][best] && random_u()%(uint32_t)++n==0) best=a;
+
+static int choose_action(int state_index, float exploration_rate) {
+    if (random_float() < exploration_rate) {
+        return (int)(random_uint() % ACTION_COUNT);
+    }
+    int best = 0, n = 1;
+    for (int action = 1; action < ACTION_COUNT; action++) {
+        if (agent.q_values[state_index][action] > agent.q_values[state_index][best]) {
+            best = action;
+            n = 1;
+        } else if (agent.q_values[state_index][action] == agent.q_values[state_index][best] &&
+                   random_uint() % (uint32_t)++n == 0) {
+            best = action;
+        }
     }
     return best;
 }
-static void update(int s,int a,float r,int next,bool terminal) {
-    float best=agent.q[next][0];
-    for(int i=1;i<ACTIONS;i++) if(agent.q[next][i]>best) best=agent.q[next][i];
-    float target=r+(terminal?0:0.98f*best);
-    agent.q[s][a]+=0.12f*(target-agent.q[s][a]);
+
+/* Move the selected action value toward reward + discounted best next value.
+ * Terminal states have no future reward. */
+static void update_q_value(int state_index, int action, float reward, int next, bool terminal) {
+    float best = agent.q_values[next][0];
+    for (int i = 1; i < ACTION_COUNT; i++) {
+        if (agent.q_values[next][i] > best) {
+            best = agent.q_values[next][i];
+        }
+    }
+    float target = reward + (terminal ? 0 : 0.98f * best);
+    agent.q_values[state_index][action] += 0.12f * (target - agent.q_values[state_index][action]);
 }
-static bool save(void) {
-    FILE *f=fopen(MODEL ".tmp","wb");
-    if(!f) { perror(MODEL); return false; }
-    bool ok=fwrite("SRL2",1,4,f)==4 && fwrite(&agent,sizeof agent,1,f)==1;
-    if(fclose(f)!=0) ok=false;
-    if(ok && rename(MODEL ".tmp",MODEL)==0) return true;
-    fprintf(stderr,"Could not save policy\n"); return false;
+
+static bool save_policy(void) {
+    FILE *f = fopen(MODEL_PATH ".tmp", "wb");
+    if (!f) {
+        perror(MODEL_PATH);
+        return false;
+    }
+    bool ok = fwrite("SRL2", 1, 4, f) == 4 && fwrite(&agent, sizeof agent, 1, f) == 1;
+    if (fclose(f) != 0) {
+        ok = false;
+    }
+    if (ok && rename(MODEL_PATH ".tmp", MODEL_PATH) == 0) {
+        return true;
+    }
+    fprintf(stderr, "Could not save policy\n");
+    return false;
 }
-static bool load(void) {
-    FILE *f=fopen(MODEL,"rb"); if(!f) return false;
+
+static bool load_policy(void) {
+    FILE *f = fopen(MODEL_PATH, "rb");
+    if (!f) {
+        return false;
+    }
     char magic[4];
-    bool ok=fread(magic,1,4,f)==4 && memcmp(magic,"SRL2",4)==0 && fread(&agent,sizeof agent,1,f)==1;
+    bool ok = fread(magic, 1, 4, f) == 4 && memcmp(magic, "SRL2", 4) == 0 &&
+              fread(&agent, sizeof agent, 1, f) == 1;
     fclose(f);
-    if(ok) for(int s=0;s<STATES && ok;s++) for(int a=0;a<ACTIONS;a++) if(!isfinite(agent.q[s][a])) { ok=false; break; }
-    if(!ok) { memset(&agent,0,sizeof agent); fprintf(stderr,"Invalid model; starting fresh\n"); }
+    if (ok) {
+        for (int state_index = 0; state_index < STATE_COUNT && ok; state_index++) {
+            for (int action = 0; action < ACTION_COUNT; action++) {
+                if (!isfinite(agent.q_values[state_index][action])) {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+    }
+    if (!ok) {
+        memset(&agent, 0, sizeof agent);
+        fprintf(stderr, "Invalid model; starting fresh\n");
+    }
     return ok;
 }
-static float epsilon(void) { return 0.05f+0.95f*expf(-(float)agent.episodes/2500); }
-static float episode(bool learn,bool random_policy,int *kills,int *hits,int *spawned) {
-    Game g; reset(&g); float total=0;
-    while(!g.done) {
-        int s=state(&g),a=random_policy?(int)(random_u()%ACTIONS):choose(s,learn?epsilon():0);
-        float r=step(&g,a); if(learn) update(s,a,r,state(&g),g.done); total+=r;
+
+static float exploration_rate(void) {
+    return 0.05f + 0.95f * expf(-(float)agent.episodes / 2500);
+}
+
+static float run_episode(bool learn, bool random_policy, int *kills, int *hits, int *spawned) {
+    GameState game;
+    reset_game(&game);
+    float total = 0;
+    while (!game.done) {
+        int state_index = encode_state(&game),
+            action = random_policy ? (int)(random_uint() % ACTION_COUNT)
+                                   : choose_action(state_index, learn ? exploration_rate() : 0);
+        float reward = step_game(&game, action);
+        if (learn) {
+            update_q_value(state_index, action, reward, encode_state(&game), game.done);
+        }
+        total += reward;
     }
-    *kills=g.kills; *hits=g.hits; *spawned=g.spawned;
-    if(learn) agent.episodes++;
+    *kills = game.kills;
+    *hits = game.hits;
+    *spawned = game.spawned;
+    if (learn) {
+        agent.episodes++;
+    }
     return total;
 }
-static void evaluate(int n,bool baseline) {
-    rng=987654321; double total=0; int kills=0,hits=0,spawned=0;
-    for(int i=0;i<n;i++) { int k,h,f; total+=episode(false,baseline,&k,&h,&f); kills+=k; hits+=h; spawned+=f; }
-    printf("%s: %d episodes, reward %.2f, kills %.2f, hits %.2f (means), kill rate %.1f%%\n",baseline?"Random":"Learned",n,total/n,(double)kills/n,(double)hits/n,spawned?100.0*kills/spawned:0.0);
-}
-static void tests(void) {
-    Game left,right; reset(&left); reset(&right);
-    left.x=50; right.x=W-50; left.spawn=right.spawn=100;
-    left.cooldown=right.cooldown=100;
-    left.enemies[0]=right.enemies[0]=(Body){.x=399,.y=100,.active=true,
-        .hp=50,.vx=200,.vy=10,.patrol_left=50,.patrol_right=400};
-    step(&left,4); step(&right,4);
-    assert(left.enemies[0].x==right.enemies[0].x);
-    assert(left.enemies[0].vx<0 && left.enemies[0].x<=400);
-    Game spawned; reset(&spawned); step(&spawned,4);
-    assert(spawned.spawned==1);
-    step(&spawned,4); assert(spawned.spawned==1);
-    Game g; reset(&g); assert(state(&g)>=0 && state(&g)<STATES);
-    g.spawn=100; g.cooldown=100;
-    g.enemies[0]=(Body){.x=g.x,.y=g.y,.active=true,.hp=25};
-    step(&g,4); assert(g.health==START_HEALTH-5 && g.hits==1);
-    reset(&g); g.spawn=100; g.cooldown=100;
-    g.enemies[0]=(Body){.x=g.x,.y=g.y-100,.active=true,.hp=1}; g.bullets[0]=(Body){.x=g.x,.y=g.y-85,.active=true};
-    step(&g,4); assert(g.kills==1 && !g.enemies[0].active && g.landed==1);
-    assert(g.blasts[0].active);
-    reset(&g); g.spawn=100; g.cooldown=100;
-    g.blasts[0]=(Body){.x=g.x,.y=g.y,.active=true,.ttl=36};
-    step(&g,4); assert(g.hits==1 && g.health==START_HEALTH-1);
-    step(&g,4); assert(g.hits==1); /* explosion cooldown prevents per-frame damage */
-    reset(&g); g.spawn=100; g.blasts[0]=(Body){.y=H+1,.active=true};
-    step(&g,4); assert(!g.blasts[0].active);
-    update(0,0,2,1,true);
- assert(fabsf(agent.q[0][0]-0.24f)<0.0001f);
-    memset(&agent,0,sizeof agent);
-    for(int i=0;i<100;i++) {
-        reset(&g);
-        while(!g.done) { int s=state(&g); assert(s>=0 && s<STATES); step(&g,(int)(random_u()%ACTIONS)); }
-        assert(g.tick<=LIMIT && g.health>=0);
+
+static void evaluate_policy(int n, bool baseline) {
+    random_seed = 987654321;
+    double total = 0;
+    int kills = 0, hits = 0, spawned = 0;
+    for (int i = 0; i < n; i++) {
+        int k, h, f;
+        total += run_episode(false, baseline, &k, &h, &f);
+        kills += k;
+        hits += h;
+        spawned += f;
     }
-    puts("PASS: damage, bullet kills, explosion damage/cooldown/expiry, terminal Q target, 100 simulations");
+    printf("%s: %d episodes, reward %.2f, kills %.2f, hits %.2f (means), kill rate %.1f%%\n",
+           baseline ? "Random" : "Learned", n, total / n, (double)kills / n, (double)hits / n,
+           spawned ? 100.0 * kills / spawned : 0.0);
 }
-static Texture2D sprite(const char *name) {
-    Texture2D t=LoadTexture(TextFormat("assets/%s.png",name));
-    if(t.id) SetTextureFilter(t,TEXTURE_FILTER_BILINEAR);
+
+static void run_tests(void) {
+    GameState left, right;
+    reset_game(&left);
+    reset_game(&right);
+    left.x = 50;
+    right.x = WINDOW_WIDTH - 50;
+    left.spawn_timer = right.spawn_timer = 100;
+    left.weapon_cooldown_ticks = right.weapon_cooldown_ticks = 100;
+    left.enemies[0] = right.enemies[0] = (Entity){.x = 399,
+                                                  .y = 100,
+                                                  .active = true,
+                                                  .health = 50,
+                                                  .velocity_x = 200,
+                                                  .velocity_y = 10,
+                                                  .patrol_left = 50,
+                                                  .patrol_right = 400};
+    step_game(&left, 4);
+    step_game(&right, 4);
+    assert(left.enemies[0].x == right.enemies[0].x);
+    assert(left.enemies[0].velocity_x < 0 && left.enemies[0].x <= 400);
+    GameState spawned;
+    reset_game(&spawned);
+    step_game(&spawned, 4);
+    assert(spawned.spawned == 1);
+    step_game(&spawned, 4);
+    assert(spawned.spawned == 1);
+    GameState game;
+    reset_game(&game);
+    assert(encode_state(&game) >= 0 && encode_state(&game) < STATE_COUNT);
+    game.spawn_timer = 100;
+    game.weapon_cooldown_ticks = 100;
+    game.enemies[0] = (Entity){.x = game.x, .y = game.y, .active = true, .health = 25};
+    step_game(&game, 4);
+    assert(game.health == START_HEALTH - 5 && game.hits == 1);
+    reset_game(&game);
+    game.spawn_timer = 100;
+    game.weapon_cooldown_ticks = 100;
+    game.enemies[0] = (Entity){.x = game.x, .y = game.y - 100, .active = true, .health = 1};
+    game.bullets[0] = (Entity){.x = game.x, .y = game.y - 85, .active = true};
+    step_game(&game, 4);
+    assert(game.kills == 1 && !game.enemies[0].active && game.landed == 1);
+    assert(game.blasts[0].active);
+    reset_game(&game);
+    game.spawn_timer = 100;
+    game.weapon_cooldown_ticks = 100;
+    game.blasts[0] = (Entity){.x = game.x, .y = game.y, .active = true, .lifetime_ticks = 36};
+    step_game(&game, 4);
+    assert(game.hits == 1 && game.health == START_HEALTH - 1);
+    step_game(&game, 4);
+    assert(game.hits == 1); /* explosion cooldown prevents per-frame damage */
+    reset_game(&game);
+    game.spawn_timer = 100;
+    game.blasts[0] = (Entity){.y = WINDOW_HEIGHT + 1, .active = true};
+    step_game(&game, 4);
+    assert(!game.blasts[0].active);
+    update_q_value(0, 0, 2, 1, true);
+    assert(fabsf(agent.q_values[0][0] - 0.24f) < 0.0001f);
+    memset(&agent, 0, sizeof agent);
+    for (int i = 0; i < 100; i++) {
+        reset_game(&game);
+        while (!game.done) {
+            int state_index = encode_state(&game);
+            assert(state_index >= 0 && state_index < STATE_COUNT);
+            step_game(&game, (int)(random_uint() % ACTION_COUNT));
+        }
+        assert(game.tick <= MAX_EPISODE_STEPS && game.health >= 0);
+    }
+    puts("PASS: damage, bullet kills, explosion damage/cooldown/expiry, terminal Q target, 100 "
+         "simulations");
+}
+
+static Texture2D load_sprite(const char *name) {
+    Texture2D t = LoadTexture(TextFormat("assets/%s.png", name));
+    if (t.id) {
+        SetTextureFilter(t, TEXTURE_FILTER_BILINEAR);
+    }
     return t;
 }
-static void draw_sprite(Texture2D t,float x,float y,float width,float height,Color tint) {
-    if(!t.id) { DrawCircle((int)x,(int)y,width/2,tint); return; }
-    DrawTexturePro(t,(Rectangle){0,0,(float)t.width,(float)t.height},
-        (Rectangle){x,y,width,height},(Vector2){width/2,height/2},0,tint);
+
+static void draw_sprite(Texture2D t, float x, float y, float width, float height, Color tint) {
+    if (!t.id) {
+        DrawCircle((int)x, (int)y, width / 2, tint);
+        return;
+    }
+    DrawTexturePro(t, (Rectangle){0, 0, (float)t.width, (float)t.height},
+                   (Rectangle){x, y, width, height}, (Vector2){width / 2, height / 2}, 0, tint);
 }
-static float blend(float previous,float current,float alpha) {
-    return previous+(current-previous)*alpha;
+
+static float interpolate(float previous, float current, float alpha) {
+    return previous + (current - previous) * alpha;
 }
-static void draw_body(Texture2D texture,const Body *previous,const Body *current,
-                      float alpha,float width,float height) {
-    float dx=current->x-previous->x,dy=current->y-previous->y;
+
+static void draw_body(Texture2D texture, const Entity *previous, const Entity *current, float alpha,
+                      float width, float height) {
+    float dx = current->x - previous->x, dy = current->y - previous->y;
     /* New/reused slots appear at their spawn rather than streaking across the arena. */
-    if(!previous->active || dx*dx+dy*dy>100*100) alpha=1;
-    draw_sprite(texture,blend(previous->x,current->x,alpha),
-                blend(previous->y,current->y,alpha),width,height,WHITE);
+    if (!previous->active || dx * dx + dy * dy > 100 * 100) {
+        alpha = 1;
+    }
+    draw_sprite(texture, interpolate(previous->x, current->x, alpha),
+                interpolate(previous->y, current->y, alpha), width, height, WHITE);
 }
-static void window(void) {
 
-    InitWindow(W,H,"Spaceship RL - independent C project"); SetTargetFPS(120);
-    Texture2D ship=sprite("spaceship"),ammo=sprite("ammo1"),blast=sprite("explosion");
-    Texture2D enemy_tex[3]={sprite("aliencraft1"),sprite("aliencraft2"),sprite("aliencraft3")};
-    Game g; reset(&g); bool learning=false,manual=false,paused=false;
-    Game previous=g;
-    int speed=1; double accumulator=0;
-    while(!WindowShouldClose()) {
-        if(IsKeyPressed(KEY_T)) learning=!learning;
-        if(IsKeyPressed(KEY_M)) manual=!manual;
-        if(IsKeyPressed(KEY_SPACE)) paused=!paused;
-        if(IsKeyPressed(KEY_F)) speed=speed==1?10:1;
-        if(IsKeyPressed(KEY_R)) { reset(&g); previous=g; accumulator=0; }
-        if(IsKeyPressed(KEY_S)) save();
-        accumulator+=paused?0:fmin(GetFrameTime(),0.1)*speed;
-        while(accumulator>=1.0/30) {
-            accumulator-=1.0/30;
-            if(g.done) { if(learning && !manual) agent.episodes++; reset(&g); }
-            previous=g;
-            int s=state(&g),a=choose(s,learning?epsilon():0);
-            if(manual) {
-                int x=IsKeyDown(KEY_RIGHT)-IsKeyDown(KEY_LEFT),y=IsKeyDown(KEY_DOWN)-IsKeyDown(KEY_UP);
-                a=(y+1)*3+x+1;
+/* Accumulate real time into fixed simulation steps; interpolate drawing between them. */
+static void run_window(void) {
+
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Spaceship RL - independent C project");
+    SetTargetFPS(120);
+    Texture2D ship = load_sprite("spaceship"), ammo = load_sprite("ammo1"),
+              blast = load_sprite("explosion");
+    Texture2D enemy_textures[3] = {load_sprite("aliencraft1"), load_sprite("aliencraft2"),
+                                   load_sprite("aliencraft3")};
+    GameState game;
+    reset_game(&game);
+    bool learning = false, manual = false, paused = false;
+    GameState previous = game;
+    int speed = 1;
+    double accumulator = 0;
+    while (!WindowShouldClose()) {
+        if (IsKeyPressed(KEY_T)) {
+            learning = !learning;
+        }
+        if (IsKeyPressed(KEY_M)) {
+            manual = !manual;
+        }
+        if (IsKeyPressed(KEY_SPACE)) {
+            paused = !paused;
+        }
+        if (IsKeyPressed(KEY_F)) {
+            speed = speed == 1 ? 10 : 1;
+        }
+        if (IsKeyPressed(KEY_R)) {
+            reset_game(&game);
+            previous = game;
+            accumulator = 0;
+        }
+        if (IsKeyPressed(KEY_S)) {
+            save_policy();
+        }
+        accumulator += paused ? 0 : fmin(GetFrameTime(), 0.1) * speed;
+        while (accumulator >= 1.0 / 30) {
+            accumulator -= 1.0 / 30;
+            if (game.done) {
+                if (learning && !manual) {
+                    agent.episodes++;
+                }
+                reset_game(&game);
             }
-            float r=step(&g,a);
-            if(learning && !manual) update(s,a,r,state(&g),g.done);
+            previous = game;
+            int state_index = encode_state(&game),
+                action = choose_action(state_index, learning ? exploration_rate() : 0);
+            if (manual) {
+                int x = IsKeyDown(KEY_RIGHT) - IsKeyDown(KEY_LEFT),
+                    y = IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP);
+                action = (y + 1) * 3 + x + 1;
+            }
+            float reward = step_game(&game, action);
+            if (learning && !manual) {
+                update_q_value(state_index, action, reward, encode_state(&game), game.done);
+            }
         }
-        float alpha=(float)(accumulator*30);
-        BeginDrawing(); ClearBackground(BLACK);
-        for(int i=0;i<ENEMIES;i++) if(g.enemies[i].active) {
-            draw_body(enemy_tex[g.enemies[i].type],&previous.enemies[i],&g.enemies[i],alpha,50,50);
+        float alpha = (float)(accumulator * 30);
+        BeginDrawing();
+        ClearBackground(BLACK);
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            if (game.enemies[i].active) {
+                draw_body(enemy_textures[game.enemies[i].type], &previous.enemies[i],
+                          &game.enemies[i], alpha, 50, 50);
+            }
         }
-        for(int i=0;i<BULLETS;i++) if(g.bullets[i].active)
-            draw_body(ammo,&previous.bullets[i],&g.bullets[i],alpha,20,30);
-        for(int i=0;i<BLASTS;i++) if(g.blasts[i].active) {
-            draw_body(blast,&previous.blasts[i],&g.blasts[i],alpha,100,100);
+        for (int i = 0; i < MAX_BULLETS; i++) {
+            if (game.bullets[i].active) {
+                draw_body(ammo, &previous.bullets[i], &game.bullets[i], alpha, 20, 30);
+            }
         }
-        draw_sprite(ship,blend(previous.x,g.x,alpha),blend(previous.y,g.y,alpha),50,50,WHITE);
+        for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+            if (game.blasts[i].active) {
+                draw_body(blast, &previous.blasts[i], &game.blasts[i], alpha, 100, 100);
+            }
+        }
+        draw_sprite(ship, interpolate(previous.x, game.x, alpha),
+                    interpolate(previous.y, game.y, alpha), 50, 50, WHITE);
 
-        DrawRectangle(0,0,W,54,(Color){15,24,44,255});
-        DrawText(TextFormat("%s  HP %d   Kills %d   Score %d   Kill rate %.1f%%   Ep %u   %dx",manual?"MANUAL":learning?"TRAINING":"POLICY",g.health,g.kills,g.score,g.spawned?100.0*g.kills/g.spawned:0.0,agent.episodes,speed),16,8,20,RAYWHITE);
-        DrawText("T train | M manual | arrows move | F speed | Space pause | R reset | S save",16,34,14,GRAY);
+        DrawRectangle(0, 0, WINDOW_WIDTH, 54, (Color){15, 24, 44, 255});
+        DrawText(TextFormat("%s  HP %d   Kills %d   Score %d   Kill rate %.1f%%   Ep %u   %dx",
+                            manual     ? "MANUAL"
+                            : learning ? "TRAINING"
+                                       : "POLICY",
+                            game.health, game.kills, game.score,
+                            game.spawned ? 100.0 * game.kills / game.spawned : 0.0, agent.episodes,
+                            speed),
+                 16, 8, 20, RAYWHITE);
+        DrawText("T train | M manual | arrows move | F speed | Space pause | R reset | S save", 16,
+                 34, 14, GRAY);
         EndDrawing();
     }
-    save(); UnloadTexture(ship); UnloadTexture(ammo); UnloadTexture(blast);
-    for(int i=0;i<3;i++) UnloadTexture(enemy_tex[i]);
+    save_policy();
+    UnloadTexture(ship);
+    UnloadTexture(ammo);
+    UnloadTexture(blast);
+    for (int i = 0; i < 3; i++) {
+        UnloadTexture(enemy_textures[i]);
+    }
     CloseWindow();
 }
-int main(int argc,char **argv) {
-    if(argc==2 && strcmp(argv[1],"--test")==0) { tests(); return 0; }
-    load();
-    if(argc==3 && (strcmp(argv[1],"--train")==0 || strcmp(argv[1],"--eval")==0)) {
-        char *end; long n=strtol(argv[2],&end,10);
-        if(*end || n<1 || n>1000000) { fprintf(stderr,"Episode count must be 1..1000000\n"); return 1; }
-        if(strcmp(argv[1],"--eval")==0) { evaluate((int)n,true); evaluate((int)n,false); return 0; }
-        double total=0;
-        for(long i=0;i<n;i++) {
-            int k,h,f; total+=episode(true,false,&k,&h,&f);
-            if((i+1)%1000==0) { printf("Episodes %u | epsilon %.3f | mean reward %.2f\n",agent.episodes,epsilon(),total/1000); total=0; }
-        }
-        return save()?0:1;
+int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--test") == 0) {
+        run_tests();
+        return 0;
     }
-    if(argc!=1) { fprintf(stderr,"Usage: %s [--train N | --eval N | --test]\nRun from AI_Project.\n",argv[0]); return 1; }
-    window(); return 0;
+    load_policy();
+    if (argc == 3 && (strcmp(argv[1], "--train") == 0 || strcmp(argv[1], "--eval") == 0)) {
+        char *end;
+        long n = strtol(argv[2], &end, 10);
+        if (*end || n < 1 || n > 1000000) {
+            fprintf(stderr, "Episode count must be 1..1000000\n");
+            return 1;
+        }
+        if (strcmp(argv[1], "--eval") == 0) {
+            evaluate_policy((int)n, true);
+            evaluate_policy((int)n, false);
+            return 0;
+        }
+        double total = 0;
+        for (long i = 0; i < n; i++) {
+            int k, h, f;
+            total += run_episode(true, false, &k, &h, &f);
+            if ((i + 1) % 1000 == 0) {
+                printf("Episodes %u | epsilon %.3f | mean reward %.2f\n", agent.episodes,
+                       exploration_rate(), total / 1000);
+                total = 0;
+            }
+        }
+        return save_policy() ? 0 : 1;
+    }
+    if (argc != 1) {
+        fprintf(stderr, "Usage: %s [--train N | --eval N | --test]\nRun from AI_Project.\n",
+                argv[0]);
+        return 1;
+    }
+    run_window();
+    return 0;
 }

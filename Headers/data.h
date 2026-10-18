@@ -201,7 +201,8 @@ struct Spaceship_Data {
 
 //Overall data template
 struct Data{
-    int* keys_down;
+    int keys_down;
+    int all_keysdown[NUM_OF_AGENTS];
     int current_time_ms;
     int frame_number;
     int* current_scores;
@@ -523,7 +524,7 @@ void Create_Snapshot_Of_Enemies_For_Spaceship(Spaceship *spaceship, int* keysdow
     Data* data_entry = calloc(1, sizeof(Data));
 
     *data_entry = (Data){
-        .keys_down = keysdown,
+        .keys_down = *keysdown,
         .current_time_ms = (int)(current_time * 1000.0),
         .spaceship_data = spaceship_data_entry,
         .enemy_data_list = *enemies_data,
@@ -570,7 +571,7 @@ Data* Create_Snapshot(Spaceship *spaceships[], int frame_counts, int scores[], d
     Data* data_entry = calloc(1, sizeof(Data));
     
     *data_entry = (Data){
-        .keys_down = keysdown,
+        .keys_down = 0,
         .current_time_ms = (int)(current_time * 1000.0),
         .spaceship_data = spaceship_data_entries,
         .enemy_data_list = *enemies_data,
@@ -579,6 +580,9 @@ Data* Create_Snapshot(Spaceship *spaceships[], int frame_counts, int scores[], d
         .current_scores = scores
     };
 
+    for(int i = 0; i < NUM_OF_AGENTS; i++){
+        data_entry->all_keysdown[i] = keysdown[i];
+    }
 
     return data_entry;
 }

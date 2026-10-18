@@ -207,7 +207,7 @@ void Learn_To_Shoot(long enemy_id, Ammo *ammo, bool to_shoot){
 
     int belongs_to = ammo->belongs_to;
 
-    int keydown = ammo->start_snapshot->keys_down[belongs_to];
+    int keydown = ammo->start_snapshot->all_keysdown[belongs_to];
 
     if(to_shoot){
         printf("shoot!\n");
@@ -308,13 +308,17 @@ void Learn_To_Approach(Enemy *enemy, Spaceship *spaceship, bool approach){
         y = avoid ? y + 1 : y;
     }
 
-
+    /*
     float awareness = (float)distance/(ENEMY_AWARENESS_RADIUS/MAP_FACTOR);
-
-    float avoidence = fmaxf(0.0f, 1.0f - awareness);    
+    
+    float avoidence = fmaxf(0.0f, 1.0f - awareness); 
+    
+    float to_approach = avoid ? avoidence : 1.0f - avoidence;
+    float to_avoid = avoid ? avoidence : 1.0f - avoidence;
+    */
 
     float approach_input[] = {(float)distance/distance_size};
-    float approach_answer[] = {1.0f - avoidence,  avoidence};
+    float approach_answer[] = {avoid ? 0 : 1 , avoid ? 1 : 0};
     
 
     
@@ -490,7 +494,7 @@ void Learn_What_Not_To_Do(Data* snapshot, long enemy_id){
 
     Enemy_Data* enemy_data = Find_Target_Enemy_Data(snapshot->enemy_data_list, enemy_id);
 
-    int keys_down = *snapshot->keys_down;
+    int keys_down = snapshot->keys_down;
 
     float shoot[] = {1,1};
     float move_h[] = {0.5, 0.5, 0.5};

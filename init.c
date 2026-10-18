@@ -263,11 +263,14 @@ int main(){
                     spaceships[i]->locked_target->position
                 );
 
-                //distance = (int)calc_mag(spaceships[i]->position, spaceships[i]->locked_target->position);
+                Vector2 spaceship_center = Find_Center(spaceships[i]->position, spaceships[i]->size_r);
+                Vector2 target_center = Find_Center(spaceships[i]->locked_target->position, spaceships[i]->locked_target->size_r);
 
-                //distance /= MAP_FACTOR;
+                distance = (int)calc_mag(spaceship_center, target_center);
 
-                //distance = distance >= distance_size ? distance_size - 1 : distance;
+                distance /= MAP_FACTOR;
+
+                distance = distance >= distance_size ? distance_size - 1 : distance;
 
             }
                 
@@ -339,7 +342,7 @@ int main(){
                 char index[16];
 
                 snprintf(index, sizeof(index), "%i", i);
-                DrawTextEx(font, index, (Vector2){spaceship->position.x + spaceship->size_r/2, spaceship->position.y + spaceship->size_r + 15}, 24, 1, WHITE);
+                DrawTextEx(font, index, (Vector2){spaceship->position.x + spaceship->size_r/2 + 10, spaceship->position.y + spaceship->size_r + 15}, 24, 1, WHITE);
             }
 
             Iterate_Projectiles(Detect_Projectile_Collisions, delta_time);
