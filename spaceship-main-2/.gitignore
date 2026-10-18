@@ -1,0 +1,5 @@
+.work/
+.venv/
+.DS_Store
+*.o
+*.plist
