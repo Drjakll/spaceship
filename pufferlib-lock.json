@@ -1,0 +1,26 @@
+{
+  "archive_sha256": "d29c8b6f8a80f0ed721f489603cdcb5f2988c4bfb60c5a3039ade415a3dfa1ff",
+  "archive_url": "https://codeload.github.com/PufferAI/PufferLib/tar.gz/6ffa5b10dbbbe4d1e8288367c7d9d3acd3bad4a2",
+  "branch_at_inspection": "5.0",
+  "commit": "6ffa5b10dbbbe4d1e8288367c7d9d3acd3bad4a2",
+  "external_only": true,
+  "inspected_on": "2026-09-16",
+  "license": "MIT",
+  "pufferl_source_sha256": "046688e753bf5b3c5485c0e061abeb8a19606db4556b83e243466fc3274d058f",
+  "repository": "https://github.com/PufferAI/PufferLib",
+  "source_files": {
+    "LICENSE": "24dae53fbe9da4b15693499b043783c7572b894ac9a5dbc6889856a409c24dee",
+    "build.sh": "3682a835ef989391b11ab53cc02bede0551b46d9302e32e2f98758d598cb879a",
+    "config/breakout.ini": "ba73db9127cbe9222e7dffec14399cd132065e9cf4a858e58ac553c62d847f17",
+    "config/default.ini": "7f493977f49f2537a59c18c2a283f062e5d6063d9e130c2d15f6be075cda1084",
+    "ocean/breakout/breakout.h": "8b7f025ee65a93295e311b8942dcc6bb4239d80de21dc5d381ec5ddab8840d34",
+    "src/algo.cu": "beb55f848076b6e089b015cf90970bb0d7a38290aa6e1ff74c961d9d4e1471f1",
+    "src/constellation.c": "deda12600fb99755994dcb0a9b84c442dac76259b15910eea83e398150c1f6c4",
+    "src/ini.h": "cd4c83ba12ba40a7bef03ad810246cc0a5880f81e8566f6ac5a089b5c598859f",
+    "src/ocean.cu": "511ea7c7c516f3fa658eb6e55f3b4b7204b467d0ce1c816b152ed90f10c5f7ff",
+    "src/protein.cu": "7127fe4fa3e9b0ab76ae0b8a4703357318366b1292f835f02b23bd98a6c90538",
+    "src/puffercpu.c": "6bbcd2d5f37e133972f9bb6df45e3412b8b856893c23764e1ce77582550a7adf",
+    "src/pufferenv.h": "3324a670791e2b3e46cbe7d10d9233d52fbc258e0d7e37d5b0c470e580de880c",
+    "src/pufferl.cu": "046688e753bf5b3c5485c0e061abeb8a19606db4556b83e243466fc3274d058f"
+  }
+}
