@@ -26,9 +26,21 @@ static uint64_t next_episode_seed(Trainer *tr) {
     return s < 100000u ? s + 100000u : s;
 }
 
-static void reset_arena(Trainer *tr, int n) {
-    env_reset(&tr->envs[n], next_episode_seed(tr));
-    tr->envs[n].max_ticks = tr->cfg.episode_ticks;
+static int reset_default(Env *env, uint64_t seed, int episode_ticks, void *context) {
+    (void)context;
+    env_reset(env, seed);
+    env->max_ticks = episode_ticks;
+    return 0;
+}
+
+static int step_default(Env *env, const ShipAction actions[NUM_SHIPS], void *context) {
+    (void)context;
+    env_step(env, actions);
+    return 0;
+}
+
+static int reset_arena(Trainer *tr, int n) {
+    return tr->env_ops.reset(&tr->envs[n], next_episode_seed(tr), tr->cfg.episode_ticks, tr->env_ops.context);
 }
 
 static void observe_all(Trainer *tr, int n) {
@@ -38,9 +50,17 @@ static void observe_all(Trainer *tr, int n) {
 }
 
 int trainer_init(Trainer *tr, const TrainConfig *cfg) {
+    return trainer_init_with_ops(tr, cfg, NULL);
+}
+
+int trainer_init_with_ops(Trainer *tr, const TrainConfig *cfg, const TrainerEnvOps *ops) {
     memset(tr, 0, sizeof *tr);
     tr->cfg = *cfg;
     tr->cfg.reward.gamma = cfg->ppo.gamma; /* potential-based shaping must discount like the learner */
+    tr->env_ops = ops ? *ops : (TrainerEnvOps){reset_default, step_default, NULL};
+    if (!tr->env_ops.reset || !tr->env_ops.step) {
+        return -1;
+    }
     pcg32_seed(&tr->seed_rng, cfg->seed, 0x5eed5u);
     Pcg32 init_rng;
     pcg32_seed(&init_rng, cfg->seed, 0x1417u);
@@ -62,8 +82,33 @@ int trainer_init(Trainer *tr, const TrainConfig *cfg) {
         }
     }
     for (int n = 0; n < cfg->envs; n++) {
-        reset_arena(tr, n);
+        if (reset_arena(tr, n) != 0) {
+            trainer_free(tr);
+            return -1;
+        }
         observe_all(tr, n);
+    }
+    return 0;
+}
+
+int trainer_load_checkpoint(Trainer *tr, const char *path) {
+    int n_nets, sizes[4];
+    int rc = checkpoint_shape(path, &n_nets, sizes, NULL);
+    if (rc != 0) {
+        fprintf(stderr, "train: cannot inspect ship checkpoint %s: %s\n", path, checkpoint_error(rc));
+        return -1;
+    }
+    if (n_nets != CHECKPOINT_NETS || sizes[0] != OBS_DIM || sizes[1] != tr->cfg.hidden ||
+        sizes[2] != tr->cfg.hidden || sizes[3] != ACTION_LOGITS) {
+        fprintf(stderr, "train: ship checkpoint %s has incompatible network dimensions\n", path);
+        return -1;
+    }
+    Mlp *nets[CHECKPOINT_NETS];
+    ship_agent_nets(tr->agents, nets);
+    rc = checkpoint_load(path, nets, CHECKPOINT_NETS, NULL);
+    if (rc != 0) {
+        fprintf(stderr, "train: cannot load ship checkpoint %s: %s\n", path, checkpoint_error(rc));
+        return -1;
     }
     return 0;
 }
@@ -109,7 +154,7 @@ static void add_episode(Trainer *tr, const Env *e) {
     tr->episodes++;
 }
 
-void trainer_collect(Trainer *tr) {
+int trainer_collect(Trainer *tr) {
     const int envs = tr->cfg.envs;
     ShipAction *acts = malloc((size_t)envs * NUM_SHIPS * sizeof *acts);
     if (!acts) {
@@ -137,7 +182,11 @@ void trainer_collect(Trainer *tr) {
         for (int n = 0; n < envs; n++) {
             Env *e = &tr->envs[n];
             float rewards[NUM_SHIPS];
-            env_step(e, acts + (size_t)n * NUM_SHIPS);
+            if (tr->env_ops.step(e, acts + (size_t)n * NUM_SHIPS, tr->env_ops.context) != 0) {
+                fprintf(stderr, "train: environment step failed\n");
+                free(acts);
+                return -1;
+            }
             env_rewards(e, &tr->cfg.reward, rewards);
             int ended = e->terminated || e->truncated;
             for (int k = 0; k < NUM_SHIPS; k++) {
@@ -148,7 +197,11 @@ void trainer_collect(Trainer *tr) {
             }
             if (ended) {
                 add_episode(tr, e);
-                reset_arena(tr, n);
+                if (reset_arena(tr, n) != 0) {
+                    fprintf(stderr, "train: environment reset failed\n");
+                    free(acts);
+                    return -1;
+                }
             }
             observe_all(tr, n);
         }
@@ -159,6 +212,7 @@ void trainer_collect(Trainer *tr) {
         rollout_gae(&tr->rollouts[k], tr->values, tr->cfg.ppo.gamma, tr->cfg.ppo.lambda);
     }
     free(acts);
+    return 0;
 }
 
 typedef struct {

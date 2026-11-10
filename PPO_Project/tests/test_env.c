@@ -175,37 +175,43 @@ void test_env_spawns_seeded_enemies_every_90_ticks(void) {
     CHECK(same);
 }
 
-void test_env_enemy_zigzag_reverses_in_window(void) {
+void test_env_enemy_zigzag_uses_seeded_random_distances(void) {
     Env env;
     quiet_env(&env);
-    Enemy *e = env_add_enemy(&env, 0, 340.0f, 0.0f);
+    Enemy *e = env_add_enemy(&env, 0, 100.0f, 0.0f);
     CHECK(e != NULL && env.n_enemies == 1);
-    hold(&env, IDLE, IDLE, IDLE, 7);
-    CHECK_NEAR(env.enemies[0].vx, 200.0f, 0.0);
-    CHECK_NEAR(env.enemies[0].x, 340.0f + 7.0f * 200.0f / 120.0f, 1e-3);
-    /* Tick 8 sees floor(x) % 350 == 1, flips vx, then moves left. */
-    hold(&env, IDLE, IDLE, IDLE, 1);
+    float turn_distance = e->zigzag_distance;
+    CHECK(turn_distance >= ENEMY_TURN_MIN_DISTANCE && turn_distance <= ENEMY_TURN_MAX_DISTANCE);
+    int ticks = 0;
+    while (e->vx > 0.0f && ticks < 300) {
+        hold(&env, IDLE, IDLE, IDLE, 1);
+        ticks++;
+    }
+    CHECK(ticks < 300);
     CHECK_NEAR(env.enemies[0].vx, -200.0f, 0.0);
-    CHECK_NEAR(env.enemies[0].x, 350.0f, 1e-3);
-    CHECK_NEAR(env.enemies[0].vy, 16.0f, 1e-4);
-    CHECK_NEAR(env.enemies[0].y, 107.0f / 120.0f, 1e-4);
+    float traveled = (env.enemies[0].x - 100.0f);
+    CHECK(traveled >= turn_distance && traveled <= turn_distance + ENEMY_START_VX * TICK_DT + 1e-3f);
+    CHECK(env.enemies[0].zigzag_distance >= ENEMY_TURN_MIN_DISTANCE &&
+          env.enemies[0].zigzag_distance <= ENEMY_TURN_MAX_DISTANCE);
+    CHECK_NEAR(env.enemies[0].vy, ENEMY_START_VY + ENEMY_TYPES[0].accel * (float)ticks / TICK_HZ, 1e-3);
+    CHECK_NEAR(env.enemies[0].y,
+               (ENEMY_START_VY * (float)ticks +
+                ENEMY_TYPES[0].accel * (float)ticks * (float)(ticks + 1) / (2.0f * TICK_HZ)) /
+                   TICK_HZ,
+               1e-2);
     hold(&env, IDLE, IDLE, IDLE, 1);
     CHECK_NEAR(env.enemies[0].vx, -200.0f, 0.0);
 
-    quiet_env(&env);
-    env_add_enemy(&env, 1, 949.0f, 0.0f);
-    env_add_enemy(&env, 2, 1.0f, 0.0f);
-    env.enemies[1].vx = -200.0f;
-    hold(&env, IDLE, IDLE, IDLE, 10);
-    /* Upstream quirk kept: 950 % 350 == 250 is outside the window, so an enemy clamped there never reverses. */
-    CHECK_NEAR(env.enemies[0].x, 950.0f, 0.0);
-    CHECK_NEAR(env.enemies[0].vx, 200.0f, 0.0);
-    /* Upstream quirk kept: inside the window every tick flips again, so an enemy at x = 1 jitters 1 <-> 2.67. */
-    CHECK_NEAR(env.enemies[1].vx, -200.0f, 0.0);
-    CHECK_NEAR(env.enemies[1].x, 1.0f, 1e-3);
-    hold(&env, IDLE, IDLE, IDLE, 1);
-    CHECK_NEAR(env.enemies[1].vx, 200.0f, 0.0);
-    CHECK_NEAR(env.enemies[1].x, 1.0f + 200.0f / 120.0f, 1e-3);
+    Env replay;
+    quiet_env(&replay);
+    Enemy *same = env_add_enemy(&replay, 0, 100.0f, 0.0f);
+    CHECK(same != NULL && same->zigzag_distance == turn_distance);
+    hold(&env, IDLE, IDLE, IDLE, 180);
+    hold(&replay, IDLE, IDLE, IDLE, ticks + 181);
+    CHECK(env.enemies[0].x == replay.enemies[0].x);
+    CHECK(env.enemies[0].vx == replay.enemies[0].vx);
+    CHECK(env.enemies[0].zigzag_distance == replay.enemies[0].zigzag_distance);
+    CHECK(env.enemies[0].zigzag_traveled == replay.enemies[0].zigzag_traveled);
 }
 
 static void place_missile(Env *env, float x, float y, int owner) {

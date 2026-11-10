@@ -38,8 +38,8 @@
 #define ENEMY_START_VY 10.0f
 #define ENEMY_SPAWN_TICKS 90 /* 0.75 s */
 #define ENEMY_SPAWN_MAX_X 800
-#define ZIGZAG_PERIOD 350
-#define ZIGZAG_WINDOW 10
+#define ENEMY_TURN_MIN_DISTANCE 100
+#define ENEMY_TURN_MAX_DISTANCE 350
 
 #define EXPLOSION_RADIUS 50.0f
 #define EXPLOSION_DAMAGE 1.0f
@@ -104,6 +104,9 @@ typedef struct {
     int points;
     int attack_cd_ticks;
     int attack_cd_left; /* contact damage allowed when <= 0 */
+    float zigzag_distance;
+    float zigzag_traveled;
+    Pcg32 movement_rng;
     uint32_t id;
 } Enemy;
 

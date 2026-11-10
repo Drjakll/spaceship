@@ -26,6 +26,8 @@ RunConfig run_config_default(void) {
         .max_seconds = 3600.0,
         .checkpoint_every = 50,
         .run_dir = NULL,
+        .initial_checkpoint = NULL,
+        .opponent_checkpoint = NULL,
     };
     return rc;
 }
@@ -34,6 +36,29 @@ static double now_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec;
+}
+
+static int write_json_string(FILE *f, const char *value) {
+    if (!value) {
+        return fputs("null", f) < 0 ? -1 : 0;
+    }
+    if (fputc('"', f) == EOF) {
+        return -1;
+    }
+    for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+        if (*p == '"' || *p == '\\') {
+            if (fputc('\\', f) == EOF || fputc(*p, f) == EOF) {
+                return -1;
+            }
+        } else if (*p < 0x20) {
+            if (fprintf(f, "\\u%04x", *p) < 0) {
+                return -1;
+            }
+        } else if (fputc(*p, f) == EOF) {
+            return -1;
+        }
+    }
+    return fputc('"', f) == EOF ? -1 : 0;
 }
 
 /* mkdir -p */
@@ -82,13 +107,19 @@ static int write_manifest(const RunConfig *rc, const char *status, long long upd
             "  \"ppo\": {\"envs\": %d, \"steps\": %d, \"hidden\": %d, \"gamma\": %g, \"lambda\": %g, "
             "\"clip\": %g, \"vf_coef\": %g, \"ent_coef\": %g, \"max_grad_norm\": %g, \"lr\": %g, "
             "\"epochs\": %d, \"minibatches\": %d, \"norm_adv\": %d},\n"
-            "  \"checkpoint_every\": %d\n"
-            "}\n",
+            "  \"checkpoint_every\": %d,\n"
+            "  \"initial_checkpoint\": ",
             status, PPO_GIT_COMMIT, (unsigned long long)t->seed, updates, decisions, seconds, rc->total_decisions,
             rc->max_seconds, NUM_SHIPS, SHIP_HEALTH, SHIP_AMMO, OBS_DIM, TICK_HZ, ACTION_REPEAT, t->episode_ticks,
             r->kill_points, r->hit, r->shot, r->damage, r->death, r->escape, r->ally_share, r->align, r->edge,
             r->bomb, t->envs, t->steps, t->hidden, p->gamma, p->lambda, p->clip, p->vf_coef, p->ent_coef,
             p->max_grad_norm, p->lr, p->epochs, p->minibatches, p->norm_adv, rc->checkpoint_every);
+    if (write_json_string(f, rc->initial_checkpoint) != 0 ||
+        fputs(",\n  \"opponent_checkpoint\": ", f) < 0 ||
+        write_json_string(f, rc->opponent_checkpoint) != 0 || fputs("\n}\n", f) < 0) {
+        fclose(f);
+        return -1;
+    }
     if (fclose(f) != 0 || rename(tmp, path) != 0) {
         return -1;
     }
@@ -147,6 +178,32 @@ static void write_episode_columns(FILE *f, const Trainer *tr) {
 }
 
 int train_run(const RunConfig *rc) {
+    return train_run_with_ops(rc, NULL);
+}
+
+int train_run_with_ops(const RunConfig *rc, const TrainerEnvOps *ops) {
+    if (!rc) {
+        fprintf(stderr, "train: missing run configuration\n");
+        return -1;
+    }
+    RunConfig effective = *rc;
+    if (effective.initial_checkpoint) {
+        int n_nets, sizes[4];
+        int shape_rc = checkpoint_shape(effective.initial_checkpoint, &n_nets, sizes, NULL);
+        if (shape_rc != 0) {
+            fprintf(stderr, "train: cannot inspect ship checkpoint %s: %s\n", effective.initial_checkpoint,
+                    checkpoint_error(shape_rc));
+            return -1;
+        }
+        if (n_nets != CHECKPOINT_NETS || sizes[0] != OBS_DIM || sizes[1] <= 0 || sizes[1] > 4096 ||
+            sizes[2] != sizes[1] || sizes[3] != ACTION_LOGITS) {
+            fprintf(stderr, "train: ship checkpoint %s has incompatible network dimensions\n",
+                    effective.initial_checkpoint);
+            return -1;
+        }
+        effective.train.hidden = sizes[1];
+    }
+    rc = &effective;
     if (!rc->run_dir || make_dirs(rc->run_dir) != 0) {
         fprintf(stderr, "train: cannot create run directory %s\n", rc->run_dir ? rc->run_dir : "(none)");
         return -1;
@@ -166,7 +223,19 @@ int train_run(const RunConfig *rc) {
     fprintf(metrics, "%s\n", METRICS_HEADER);
 
     Trainer tr;
-    if (trainer_init(&tr, &rc->train) != 0) {
+    if (trainer_init_with_ops(&tr, &rc->train, ops) != 0) {
+        fprintf(stderr, "train: failed to initialize trainer or training environment\n");
+        if (write_manifest(rc, "failed", 0, 0, 0.0) != 0) {
+            fprintf(stderr, "train: cannot mark %s as failed\n", rc->run_dir);
+        }
+        fclose(metrics);
+        return -1;
+    }
+    if (rc->initial_checkpoint && trainer_load_checkpoint(&tr, rc->initial_checkpoint) != 0) {
+        trainer_free(&tr);
+        if (write_manifest(rc, "failed", 0, 0, 0.0) != 0) {
+            fprintf(stderr, "train: cannot mark %s as failed\n", rc->run_dir);
+        }
         fclose(metrics);
         return -1;
     }
@@ -181,7 +250,12 @@ int train_run(const RunConfig *rc) {
         u++;
         PpoConfig pc = tr.cfg.ppo;
         pc.lr = (float)(rc->train.ppo.lr * (1.0 - (double)(u - 1) / (double)planned));
-        trainer_collect(&tr);
+        if (trainer_collect(&tr) != 0) {
+            fprintf(stderr, "train: rollout collection failed at update %lld\n", u);
+            status = "failed";
+            rc_out = -1;
+            break;
+        }
         PpoStats st[NUM_SHIPS];
         PpoStats mean = {0};
         trainer_update(&tr, &pc, st, NUM_SHIPS);

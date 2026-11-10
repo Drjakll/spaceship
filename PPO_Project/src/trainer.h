@@ -21,6 +21,12 @@ typedef struct {
     PpoConfig ppo;
 } TrainConfig;
 
+typedef struct {
+    int (*reset)(Env *env, uint64_t seed, int episode_ticks, void *context);
+    int (*step)(Env *env, const ShipAction actions[NUM_SHIPS], void *context);
+    void *context;
+} TrainerEnvOps;
+
 /* Section 3.3 defaults: 16 arenas x 128 decisions, 128 hidden units. */
 TrainConfig train_config_default(void);
 
@@ -51,6 +57,7 @@ typedef struct {
     Pcg32 action_rng[NUM_SHIPS];
     Pcg32 update_rng[NUM_SHIPS];
     Pcg32 seed_rng;
+    TrainerEnvOps env_ops;
     float *obs[NUM_SHIPS]; /* envs x OBS_DIM current observations */
     float *logits;         /* envs x ACTION_LOGITS scratch */
     float *values;         /* envs scratch */
@@ -61,14 +68,16 @@ typedef struct {
 
 /* Returns 0, or -1 if memory runs out. */
 int trainer_init(Trainer *tr, const TrainConfig *cfg);
+int trainer_init_with_ops(Trainer *tr, const TrainConfig *cfg, const TrainerEnvOps *ops);
 void trainer_free(Trainer *tr);
+int trainer_load_checkpoint(Trainer *tr, const char *path);
 
 /* Checkpoints hold every ship's actor then critic: actor0, critic0, actor1, critic1, ... */
 #define CHECKPOINT_NETS (2 * NUM_SHIPS)
 void ship_agent_nets(Agent agents[NUM_SHIPS], Mlp *nets[CHECKPOINT_NETS]);
 
 /* Fill every ship's rollout with cfg.steps decisions per arena, then compute GAE. */
-void trainer_collect(Trainer *tr);
+int trainer_collect(Trainer *tr);
 
 /*
  * One PPO update per ship from the collected rollouts. Ships share nothing, so with threads > 1

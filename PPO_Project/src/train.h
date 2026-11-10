@@ -9,6 +9,8 @@ typedef struct {
     double max_seconds;        /* wall-clock cap; training stops after the update that crosses it */
     int checkpoint_every;      /* updates between snapshots in run_dir/checkpoints */
     const char *run_dir;
+    const char *initial_checkpoint;
+    const char *opponent_checkpoint;
 } RunConfig;
 
 RunConfig run_config_default(void);
@@ -21,5 +23,6 @@ RunConfig run_config_default(void);
  * Returns 0, or -1 on an I/O error or a non-finite loss.
  */
 int train_run(const RunConfig *rc);
+int train_run_with_ops(const RunConfig *rc, const TrainerEnvOps *ops);
 
 #endif

@@ -173,6 +173,11 @@ static void move_missiles(Env *env) {
     }
 }
 
+static float next_zigzag_distance(Enemy *e) {
+    return (float)(ENEMY_TURN_MIN_DISTANCE +
+                   pcg32_bounded(&e->movement_rng, ENEMY_TURN_MAX_DISTANCE - ENEMY_TURN_MIN_DISTANCE + 1));
+}
+
 Enemy *env_add_enemy(Env *env, int type, float x, float y) {
     if (env->n_enemies >= MAX_ENEMIES) {
         env->stats.dropped_spawns++;
@@ -193,6 +198,8 @@ Enemy *env_add_enemy(Env *env, int type, float x, float y) {
     e->points = t->points;
     e->attack_cd_ticks = t->attack_cooldown_ticks;
     e->id = env->next_enemy_id++;
+    pcg32_seed(&e->movement_rng, env->seed ^ ((uint64_t)e->id * UINT64_C(0x9e3779b97f4a7c15)), e->id);
+    e->zigzag_distance = next_zigzag_distance(e);
     env->stats.spawned++;
     return e;
 }
@@ -211,15 +218,20 @@ static void update_spawner(Env *env) {
     }
 }
 
-/* Upstream AccelerateZigZagVPath plus Move_Enemy's horizontal clamp. */
+/* Accelerate downward and reverse horizontal direction after a seeded random distance. */
 static void step_enemy(Enemy *e) {
     e->vy += e->accel * TICK_DT;
     e->y += e->vy * TICK_DT;
-    int c = (int)floorf(e->x) % ZIGZAG_PERIOD;
-    if (c < ZIGZAG_WINDOW && c > 0) {
+    float next_x = e->x + e->vx * TICK_DT;
+    float max_x = ARENA_SIZE - 2.0f * e->radius;
+    float old_x = e->x;
+    e->x = clampf(next_x, 0.0f, max_x);
+    e->zigzag_traveled += fabsf(e->x - old_x);
+    if (e->zigzag_traveled >= e->zigzag_distance || next_x < 0.0f || next_x > max_x) {
         e->vx = -e->vx;
+        e->zigzag_traveled = 0.0f;
+        e->zigzag_distance = next_zigzag_distance(e);
     }
-    e->x = clampf(e->x + e->vx * TICK_DT, 0.0f, ARENA_SIZE - 2.0f * e->radius);
 }
 
 static void move_enemies(Env *env) {
@@ -344,14 +356,14 @@ RewardConfig reward_config_default(void) {
         .kill_points = 0.125f, /* +0.25 / +0.5 / +1.0 for 2 / 4 / 8 upstream points */
         .hit = 0.02f,
         .shot = -0.05f, /* a blind shot (18% land) loses reward; an aimed one (63% land) still pays */
-        .damage = -0.01f,
-        .death = -2.0f,
+        .damage = -0.1f,
+        .death = -4.0f,
         .escape = -0.05f,
         .ally_share = 0.0f,
-        .align = 0.5f,
+        .align = 0.1f,
         .gamma = 0.99f,
         .edge = -0.003f,
-        .bomb = -0.04f, /* explosions ("fire bombs") then cost -0.05 per HP in total */
+        .bomb = -0.1f, /* explosions ("fire bombs") then cost -0.05 per HP in total */
     };
     return cfg;
 }
@@ -522,7 +534,9 @@ uint64_t env_hash(const Env *env) {
     for (int k = 0; k < env->n_enemies; k++) {
         const Enemy *e = &env->enemies[k];
         h = fnv_float(fnv_float(fnv_float(fnv_float(h, e->x), e->y), e->vx), e->vy);
-        h = fnv_float(fnv_float(h, e->health), e->radius);
+        h = fnv_float(fnv_float(fnv_float(h, e->health), e->radius), e->zigzag_distance);
+        h = fnv_float(h, e->zigzag_traveled);
+        h = fnv_int(fnv_int(h, (int64_t)e->movement_rng.state), (int64_t)e->movement_rng.inc);
         h = fnv_int(fnv_int(fnv_int(fnv_int(h, e->type), e->dead), e->attack_cd_left), e->id);
     }
     h = fnv_int(h, env->n_missiles);

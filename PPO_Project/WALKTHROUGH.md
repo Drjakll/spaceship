@@ -159,7 +159,7 @@ MQ-1 PASS  MQ-2 PASS  MQ-3 PASS  MQ-4 PASS
 - **Legacy timing.** The legacy baseline decides every tick, as upstream does; PPO and random decide every 4 ticks. Their shaped returns are therefore not comparable; team score and the other game metrics are.
 - **Conditional legacy test.** `legacy_tables_reproduce_upstream_lookups` prints `legacy: built without cJSON; skipped` and passes without checking when built without cJSON. With cJSON (this Mac) it runs fully.
 - **No vulnerability scan.** Dependency audit is limited: the core has no third-party code, and the Homebrew raylib 6.2 and cJSON 1.7.19 were not scanned.
-- **Upstream quirks.** Kept intentionally and documented: shared enemy cooldown, multi-hit missiles, zigzag jitter and right-wall sticking, top-left missile launch.
+- **Upstream quirks.** Kept intentionally and documented: shared enemy cooldown, multi-hit missiles, and top-left missile launch. Enemy zigzag jitter and wall sticking were replaced with seeded random turn distances and wall reversals.
 
 ---
 

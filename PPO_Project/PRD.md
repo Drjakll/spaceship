@@ -73,7 +73,7 @@ Physics advances in fixed ticks of 1/120 s, the upstream target frame rate. Each
 | Ammo | **100 missiles per ship per episode, no refill (user-required; upstream unlimited)**; firing with no ammo does nothing and leaves the cooldown untouched |
 | Enemy spawn | every 0.75 s (90 ticks); type uniform over 3; x uniform integer [0, 800]; y = −25; vx 200, vy 10 |
 | Enemy types | health 20 / 30 / 40; contact damage 5 / 7 / 10; downward acceleration 90 / 72 / 54; points 2 / 4 / 8; attack cooldown 1.0 / 1.2 / 1.4 s |
-| Zigzag | vy += a·dt; y += vy·dt; reverse vx when 0 < (int)floor(x) mod 350 < 10; x += vx·dt; clamp x to [0, 950] |
+| Zigzag | vy += a·dt; y += vy·dt; reverse horizontal direction after a seeded random travel distance of 100–350 px, or at an arena wall; clamp x to [0, 950] |
 | Missile hit | centre distance < 10 + enemy radius on a live enemy: −10 health to **every** overlapping live enemy, missile removed |
 | Kill | health ≤ 0 → explosion: radius 50, damage 1, cooldown 0.15 s (18 ticks), vx 1, vy 100, acceleration −1; shooter's score += points |
 | Contact | centre distance < 25 + enemy radius and the enemy's cooldown has elapsed: ship loses that enemy's damage; the cooldown is per enemy, shared by all ships, checked in ship index order |
