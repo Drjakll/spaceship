@@ -1,0 +1,6 @@
+.DS_Store
+build/
+runs/
+*.tar.gz
+__pycache__/
+README.md

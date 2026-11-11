@@ -1,0 +1,541 @@
+# PRD — PPO training in C for the upstream Spaceship game
+
+Status: Approved
+Approval evidence: On 2026-10-22 the user replied "PRD approved as drafted, including brew install of raylib/pkg-config/cjson and the 60-min-per-seed training budget. Build the whole sprint backlog." Earlier answers in chat chose everything in C (no Python, no PufferLib), three ships with separate networks, a score-plus-survival reward, and a raylib viewer.
+Amendment (2026-10-22, user-required): "make sure we have 200 as health for the ships and we do not have infinite ammo. these constraints are required." Ammo choice: "100 per ship, no refill" (its option text included a small per-shot cost). Compute: "We can use my modal.com account for 5-10 minutes of training once the code and smoke test is done", then "let's use and train 2 ships or seeds and one on my mac. first make sure it runs properly on local before modal.com run". These amendments are folded into sections 2–6 below.
+Amendment 2 (2026-10-22): pilots showed PPO learning to camp at the bottom corners and fire at random. Asked to adopt λ 0.99, alignment shaping and sampled evaluation, the user replied "yeah, let's work on alignment shaping properly first. also, if it's going bottom left or right then it's a problem. we have to make sure agents learn when to fire the missile instead of randomly firing every second or more. let's fix the issues first and we can just use mac for cpu related runs." Choices made in chat: "Edge penalty + alignment", "Fire-solution input", "20 min per seed". Modal is no longer used.
+Amendment 3 (2026-10-22): three minutes into the 20-minute seeds the user said "don't run anymore seeds as it's enough for now". The seed runs were stopped and discarded. The 10-minute pilot (seed 101) is the trained result. Its selected checkpoint is the one kept in git and evaluated once on the held-out split.
+Amendment 4 (2026-10-23): the user asked for "an another document on reward function and how it works in this spaceship for 3. Make it detailed with calculations and fix any bugs that can arise while you are investigating deeply." An audit of 40 episodes each for the checkpoint and for random play found:
+- **Sound:** components sum to the return within 1e-4; no reward was lost to dead ships; the decision-end edge check agrees with time in the band 99.3–99.9% of the time.
+- **Hidden potential.** In about a third of the decisions where Φ > 0, Φ's best enemy is outside the ship's 8 observed slots, because explosions fill 5.2 of the 8 slots on average.
+- **Time limit.** The remaining time is observed and evaluation ends at 120 s, yet training bootstrapped past the limit.
+
+T056–T057 fix the two learning-signal defects without changing observations, so the committed checkpoint's play and scores are unaffected. T058 documents the reward. Re-ranking the enemy slots needs retraining and is left as a recommendation.
+Amendment 5 (2026-10-30): the user reported "right now it's not avoiding the fire bomb as well as ammo empty within 27 seconds". Probes of the kept checkpoint on the dev scenarios found:
+- **Ammo.** Ships run out of missiles at 27.0 s on average (random play: 27.6 s). Shots fired with a predicted hit land 63% of the time and blind shots 18%, so at −0.01 per missile even a blind shot nets about +0.025.
+- **Fire bombs.** Explosions cause 81% of the damage the team takes (176 of 217 HP per episode), yet cost the same −0.01 per HP as an enemy body.
+
+Shown the proposed code change, the user replied "Sounds good. make the above changes and let's train for 10-15 minutes and show me the spaceship playing the game." T060–T064 implement it: a −0.05 shot cost, an extra −0.04 per HP lost to explosions, eval metrics for both problems, and one 15-minute retrain on seed 101, shown in the viewer.
+Amendment 6 (2026-10-31): asked whether to keep the retrained checkpoint in git or reduce body hits first, the user chose "Keep checkpoint". T065–T067 keep it beside the original, which REWARD.md's comparisons still use. They then run its one held-out test evaluation and point HOW_TO_RUN at it.
+Authoritative backlog: this document, section 5
+
+## 1. Problem and users
+
+The user wants the latest upstream Spaceship game (`Drjakll/spaceship`, `main` at `e683c7d`) trained with real reinforcement learning. Upstream's three-ship game (`init.c`, `Headers/`) learns through per-cell multinomial logistic regression (`Headers/ml_utilities.h`). Labels are hand-assigned after the fact: a missile hit marks the earlier key press as "do", a miss as "don't", and a nearby enemy marks the current move as "avoid". This is supervised imitation of self-labelled snapshots, not return maximization. The learned tables live in `Game_Data/trained{0,1,2}.json`. Upstream's separate `AI_Project/` is a single-ship tabular Q-learner on an independent game, so it does not cover the three-ship game.
+
+Desired outcome: a self-contained `PPO_Project/` folder, all in C11. It holds a headless, seeded port of the upstream three-ship game, an explicit reward function, vectorized rollouts, and a neural-network actor-critic trained with PPO. It also has reproducible evaluation against baselines and a raylib viewer that uses the original artwork.
+
+Research question: can independent PPO learners (one network per ship) score more upstream points than random play or upstream's frozen logistic-regression tables, without dying more often?
+
+## 2. Goals and scope
+
+Goals:
+
+- Train three ships with PPO and neural networks in C, with no CUDA or PufferLib. All three seeds train on this Mac (Apple M3 Pro, 12 cores, 36 GB) for 20 minutes each.
+- Ships should fight from the open field rather than camp at the walls, and fire when a shot is likely to hit rather than at random.
+- Apply two required changes to upstream's rules: ship health is 200 (upstream 1000), and ammo is finite at 100 missiles per ship per episode, with no refill (upstream unlimited).
+- Make the reward, observations, actions, rollouts, and PPO maths explicit and unit-tested.
+- Compare trained checkpoints against baselines on held-out seeds, and watch them in a viewer.
+
+Must-have scope (this sprint):
+
+- Headless C simulation reproducing upstream `main` game rules at a fixed timestep.
+- Per-ship reward function with configurable coefficients and logged components.
+- Fixed-size ego-centric observations, factorized actions that match upstream's left/stay/right × up/stay/down × shoot/no-shoot structure.
+- C neural networks: dense layers, tanh MLP actor and critic, factorized categorical policy, Adam, checkpoints.
+- PPO: vectorized rollouts, GAE, clipped surrogate, value loss, entropy bonus, minibatch epochs, metrics logging.
+- `train`, `eval`, and `viewer` commands; random and legacy-table baselines; checkpoint selection.
+
+Later (deferred):
+
+- Scripted heuristic baseline, running reward normalization, training resume with optimizer state.
+- Accelerate/BLAS matrix kernels, recurrent policies, shared or centralized critics (MAPPO), learned enemies or self-play.
+
+Non-goals:
+
+- Changing upstream's `init.c`, `Headers/`, `AI_Project/`, or `Game_Data/`; they stay as they are.
+- Python, PyTorch, PufferLib, GPU or cloud training. The earlier `feature/cooperative-ppo` branch and `~/Developer/PRD.md` are left untouched.
+- Fixing upstream gameplay quirks (see section 6, Q5).
+
+## 3. Requirements and constraints
+
+Platform: macOS on Apple Silicon. The simulation, networks, PPO, and evaluation need only a C11 compiler, `make`, libc, libm, and pthreads. The viewer needs raylib; the legacy baseline needs cJSON (section 6, Q1). Everything builds and runs from `PPO_Project/`, which references the root `Pictures/`, `Fonts/`, and `Game_Data/` read-only.
+
+### 3.1 Environment (port of upstream `main`)
+
+Physics advances in fixed ticks of 1/120 s, the upstream target frame rate. Each policy decision repeats for 4 ticks, so there are 30 decisions per second. Upstream cooldowns convert to integer tick counts so float drift cannot shift them. Positions are top-left corners, with centre = position + radius, as upstream.
+
+| Rule | Upstream value carried over |
+| --- | --- |
+| Arena | 1000 × 1000; ship x/y clamped to [0, 950] |
+| Ships | 3; start at (400 + 50i, 700); **200 health (user-required; upstream 1000)**; 400 px/s; radius 25; diagonal moves normalized to 400 px/s |
+| Weapon | 0.25 s cooldown (30 ticks); missile spawns at ship position, vy 30 px/s upward, +300 px/s² acceleration, radius 10, 10 damage; removed above y = −10 |
+| Ammo | **100 missiles per ship per episode, no refill (user-required; upstream unlimited)**; firing with no ammo does nothing and leaves the cooldown untouched |
+| Enemy spawn | every 0.75 s (90 ticks); type uniform over 3; x uniform integer [0, 800]; y = −25; vx 200, vy 10 |
+| Enemy types | health 20 / 30 / 40; contact damage 5 / 7 / 10; downward acceleration 90 / 72 / 54; points 2 / 4 / 8; attack cooldown 1.0 / 1.2 / 1.4 s |
+| Zigzag | vy += a·dt; y += vy·dt; reverse horizontal direction after a seeded random travel distance of 100–350 px, or at an arena wall; clamp x to [0, 950] |
+| Missile hit | centre distance < 10 + enemy radius on a live enemy: −10 health to **every** overlapping live enemy, missile removed |
+| Kill | health ≤ 0 → explosion: radius 50, damage 1, cooldown 0.15 s (18 ticks), vx 1, vy 100, acceleration −1; shooter's score += points |
+| Contact | centre distance < 25 + enemy radius and the enemy's cooldown has elapsed: ship loses that enemy's damage; the cooldown is per enemy, shared by all ships, checked in ship index order |
+| Death | health ≤ 0 → ship leaves physics: no moves, shots, or damage |
+| Removal | enemies or explosions with y > 1000 are removed; a live enemy removed this way counts as an escape |
+
+Tick order follows upstream's frame: spawn → contact damage per alive ship → ship moves and shots → missile hits → enemy moves → cooldown decrement → missile moves → escape removal. Upstream removes escaped enemies on the next list pass; the port removes them in the same tick, which is the one intended timing difference. Upstream's unused `Enemy_Learn_To_Avoid` is not ported.
+
+Episodes start from a seeded reset. They **terminate** when every ship is dead and are **truncated** at 120 simulated seconds (3,600 decisions). Upstream has no time limit (section 6, Q4). A ship's death is terminal for that ship's trajectory. Its later samples in the same episode are masked out until the arena resets.
+
+### 3.2 Actions, observations, reward
+
+**Action per ship** (MultiDiscrete [3, 3, 2], upstream's factorization): horizontal {left, stay, right}, vertical {up, stay, down}, fire {no, yes}. The log-probability is the sum of the three heads.
+
+**Observation per ship** (148 float32 values in [−1, 1], computed from centres without consuming random numbers):
+
+| Block | Count | Fields |
+| --- | --- | --- |
+| Self | 8 | x/1000, y/1000, health/200, weapon cooldown/30, ammo/100, alive, time-remaining fraction, would-hit-now (1 if a missile fired now would hit some live enemy) |
+| Allies | 2 × 6 | alive, dx/1000, dy/1000, health/200, weapon cooldown/30, ammo/100 |
+| Enemies and explosions | 8 × 12 | present, dx/1000, dy/1000, vx/800, vy/1000, health/40, explosion bit, 3 type bits, attack-ready bit, fire solution (horizontal offset of a missile fired now at contact or closest pass, /200, capped at 1) |
+| Missiles | 8 × 4 | present, dx/1000, dy/1000, fired-by-self bit |
+
+Entity slots hold the nearest entities by centre distance, ordered nearest first, zero-padded, with relative values clamped to [−1, 1].
+
+**Fire solution.** For a live enemy above the ship, simulate a missile launched now from the ship's position against that enemy alone. Use the exact tick rules: missile acceleration, enemy acceleration, zigzag reversal and wall clamp. Stop when the missile hits, passes the enemy, or leaves the arena. A shot "would hit" when the centres come within 10 + 25 px. Its offset is the horizontal distance between the centres at contact, or at the closest pass for a miss; 0 means dead centre. The prediction ignores other missiles and assumes the ship holds still until it fires.
+
+**Reward per ship per decision** (score + survival; coefficients are configurable, these are defaults):
+
+```text
+r_i = 0.125 * points_of_kills_by_i          # +0.25 / +0.5 / +1.0 for type 1 / 2 / 3
+    + 0.02  * missile_hits_by_i             # shaping: kills take 2-4 hits
+    - 0.05  * missiles_fired_by_i           # ammo is finite: a blind shot (18% land) loses reward (amendment 5)
+    - 0.01  * health_lost_by_i              # clamped to remaining health
+    - 0.04  * health_lost_to_explosions_by_i  # fire bombs cost -0.05 per HP in total (amendment 5)
+    - 2.0   * died_i                        # once, on the death decision
+    - 0.05  * escapes   (if ship i alive)   # live enemies leaving the bottom
+    + 0.0   * ally_kill_points * 0.125      # team-share knob, off by default
+    + 0.5   * (γ·Φ_i(s') − Φ_i(s))          # potential-based alignment shaping (γ = PPO γ)
+    - 0.003 * near_edge_i                   # ship centre within 60 px of a side wall or the bottom
+```
+
+Φ_i(s) is the best shot quality available to ship i: the maximum of max(0, 1 − offset / 70) over the live enemies in ship i's 8 observed enemy slots (amendment 4). It therefore equals the largest per-slot shot-quality input, so the critic can see it. The 70 px ramp gives near misses partial credit, so shaping leads toward a hit. It is 0 without ammo or when the ship is dead. Φ is 0 after a terminal transition (the ship's death, team defeat, or the 120 s limit), so shaping does not change which policy is optimal (Ng et al., 1999). The edge penalty is not potential-based. It deliberately makes wall camping costly: about −10.8 per episode if a ship never leaves the band.
+
+Rewards are not clipped. Each component is accumulated and logged per episode. The upstream game score (points per ship and team total) is tracked separately from the shaped return.
+
+### 3.3 Networks and PPO
+
+- One actor and one critic per ship, 3 ships → 6 MLPs. Each MLP is 139 → 128 → 128 tanh; the actor ends in 8 logits (3 + 3 + 2) and the critic in 1 value. Orthogonal init uses gain √2 for hidden layers, 0.01 for the policy output, and 1 for the value output.
+- The 120 s limit is a true ending for learning (amendment 4): the remaining time is observed, and evaluation scores exactly 120 s. Training therefore neither bootstraps past it nor keeps a shaping potential there (Pardo et al., 2018, "Time Limits in Reinforcement Learning").
+- PPO defaults: 16 arenas × 128 decisions per rollout (2,048 samples per ship network), γ 0.99, GAE λ 0.99 (0.95 left only ~5% of the credit for a hit ~50 decisions, 1.6 s, after its shot), clip 0.2, 4 epochs, 4 minibatches, Adam lr 3e-4 annealed linearly, ε 1e-5, value coefficient 0.5, entropy coefficient 0.01, global grad-norm clip 0.5, per-minibatch advantage normalization.
+- No ending bootstraps for the game: death, team defeat, and the 120 s limit are all terminal. The learner keeps time-limit bootstrapping (used by the toy task, whose observation has no clock).
+- Seeds: every arena and each action sampler use their own seeded PCG32 stream, so a run is reproducible on the same build and platform.
+- Training stops at `--total-decisions` or `--max-seconds`, whichever comes first. The run directory holds `manifest.json` (git commit, config, seed), `metrics.csv` (one row per update), and checkpoints.
+- Metrics per update: decisions per second, mean episode return per ship, team score, kills, hits, damage taken, deaths, escapes, policy loss, value loss, entropy, approximate KL, clip fraction, explained variance, learning rate.
+
+### 3.4 Baselines and evaluation protocol
+
+- Policies: `random` (uniform per head); `legacy` (upstream `Game_Data/trained{0,1,2}.json` tables, frozen, using upstream target locking and grid lookup); `ppo` (checkpoint, seeded sampling by default, `--greedy` optional; greedy argmax proved unstable for these high-entropy policies).
+- Seed splits: training uses seeds 1, 2, 3 (one independent run each). Checkpoint selection uses development scenarios 1000–1019. The held-out test scenarios 10000–10099 run once, at the end.
+- Report per policy: per-seed rows and mean, standard deviation, and 95% CI for team score, per-ship score, kills, hits, accuracy, damage taken, deaths, ships alive at the end, survival time, and escapes. Reports also carry the binary hash, checkpoint hash, and config.
+- Model-quality targets (hypotheses, not promises):
+  - **MQ-1:** on test scenarios, a selected PPO checkpoint's mean team score exceeds both `random` and `legacy` by more than the sum of the two 95% CI half-widths, for at least 2 of 3 training seeds.
+  - **MQ-2:** for the same checkpoints, mean deaths per episode are at most `random`'s.
+- Compute: seeds 1–3 train on this Mac, 20 min of wall clock each, side by side in the background. Decisions reached per seed are recorded; seeds stop on time, not on a decision count.
+- Behaviour targets (hypotheses, not promises): **MQ-3**, ships spend at most 20% of alive time with their centre in the edge band. **MQ-4**, accuracy (hits per shot) exceeds random's, and so does the share of shots fired with a predicted hit. Random play's values are measured by the same `eval` command.
+
+## 4. Acceptance criteria and validation
+
+Software correctness:
+
+| ID | Observable acceptance criterion | How to verify |
+| --- | --- | --- |
+| AC-001 | `PPO_Project` builds with `-std=c11 -Wall -Wextra -Wpedantic -Werror`; the core needs only libc, libm, and pthreads | `make -C PPO_Project test` |
+| AC-002 | The simulation reproduces each section 3.1 rule at fixed ticks, including 200 health and the 100-missile limit | per-rule unit tests with hand-computed fixtures |
+| AC-003 | Identical seed and actions give identical trajectories; different seeds differ | state-hash replay test over 10,000 ticks |
+| AC-004 | Episodes report terminated vs truncated correctly; dead ships leave physics | boundary tests |
+| AC-005 | Per-ship reward equals the configured linear combination; components sum to the total | scripted-event reward fixture |
+| AC-006 | Observations have a fixed length (148), stay within [−1, 1], order slots by distance, zero-pad, and consume no RNG | observation tests |
+| AC-007 | Analytic gradients of dense layers, tanh, factorized log-prob, and entropy match finite differences | gradient-check tests (tolerance stated in tests) |
+| AC-008 | Adam matches reference values; checkpoints round-trip exactly; corrupt or mismatched files are rejected | optimizer and checkpoint tests |
+| AC-009 | GAE handles termination, truncation bootstrap, and masks; clipped-loss gradients are correct; every active sample is visited once per epoch | PPO maths fixtures |
+| AC-010 | PPO learns a toy target-reaching task to a documented threshold within a documented update budget (seed 1) | learner sanity test |
+| AC-011 | Rollouts use one network per ship across N arenas; sample counts and death masks are correct | rollout tests |
+| AC-012 | `train` writes a manifest, per-update metrics, and loadable checkpoints; threaded and serial updates match | smoke run plus tests |
+| AC-013 | `eval` writes JSON with per-seed rows and summary statistics for `random` and `ppo`; dev and test splits are enforced | eval tests |
+| AC-014 | The `legacy` policy reproduces upstream table lookups and target locking from `Game_Data` | legacy fixture tests |
+| AC-015 | The raylib viewer shows three ships with the original artwork, driven by `ppo`, `random`, or `legacy`, and can save a screenshot. With `--run-dir`, it follows a training run, loading the newest checkpoint for each new episode (user request: "my friend's code had the game playing based on latest checkpoint") | `viewer --screenshot` run plus image inspection |
+| AC-016 | ASan/UBSan runs of all tests plus 1M random decisions are clean; the clang static analyzer reports nothing | `make sanitize`, `make analyze` |
+| AC-017 | README commands for build, train, eval, and view run as written | executing each command |
+| AC-020 | One script builds, tests, smoke-trains, trains, selects, and archives a seed on this Mac | local script run |
+| AC-021 | The fire solution predicts exactly whether an isolated missile fired now hits a given enemy, zigzag reversals included | tests that fire the missile in the real simulation |
+| AC-022 | Alignment shaping equals 0.5 · (γΦ' − Φ) with Φ' = 0 on terminal transitions; the edge penalty applies only inside the 60 px band | reward fixtures |
+| AC-023 | Training metrics and eval reports include edge-time share and the share of shots fired with a predicted hit | CSV/JSON tests |
+| AC-029 | Each missile costs −0.05 by default. Health lost to explosions costs an extra −0.04 per HP (`--bomb`), logged as a tenth reward component | reward fixtures, eval component test |
+| AC-030 | Eval reports include the team's explosion damage and the mean time each ship ran out of ammo | eval tests |
+
+Model quality (stochastic; measured separately from correctness):
+
+| ID | Observable acceptance criterion | How to verify |
+| --- | --- | --- |
+| AC-018 | Seeds 1–3 each train 20 min on this Mac with complete metrics and a selected checkpoint | run directories |
+| AC-019 | One test-split report per selected checkpoint against both baselines, with MQ-1 to MQ-4 recorded as pass or fail | `eval --split test` reports |
+| AC-026 | The shaping potential uses only the ship's observed enemy slots and equals the largest per-slot shot-quality input | potential tests |
+| AC-027 | For learning, the 120 s limit is terminal: zero bootstrap, zero potential after it | env and rollout tests |
+| AC-028 | `REWARD.md` explains every reward term for the three ships with worked calculations; each number traces to code, a test, or a reproducible command | document review plus reproduction |
+| AC-025 | Git holds code, tests, docs, and only selected checkpoints (plus a short index); logs, metrics, reports, build output, and periodic checkpoints stay ignored (user request: "commit the most important code, checkpoints, PPO code, instead of logs and build files") | `git ls-files` |
+| AC-024 | A 10-minute pilot with the new defaults records edge time, accuracy, and predicted-hit shot share against random before the official seeds | pilot report |
+| AC-031 | One 15-minute retrain on seed 101 with the amendment-5 reward is selected on dev and compared with the kept checkpoint on ammo-out time, explosion damage, team score, and deaths | dev reports |
+
+Commands (created by T001/T040): `make -C PPO_Project test`, `make -C PPO_Project sanitize`, `make -C PPO_Project analyze`. Dependency audit: the core has no third-party code; the Homebrew packages raylib and cJSON are recorded by version in the README.
+
+## 5. Sprint backlog
+
+Sprint: PPO in C for upstream Spaceship
+Review base: e683c7de0594e6108a1189ed00593b6115732f1a
+Sprint branch: feature/ppo-training (from upstream `main` e683c7d)
+Review scope: PPO_Project/
+
+- [x] T001 | P0 | depends: none | AC-001 | Create `PPO_Project` with a strict-warning C11 Makefile running a seeded PCG32 reference test; done when: `make -C PPO_Project test` passes the PCG32 sequence test.
+  - red: `make -C PPO_Project test` → exit 2; `tests/test_rng.c:4:10: fatal error: 'rng.h' file not found`
+  - green: `make -C PPO_Project test` → exit 0; `2 tests, 13 checks, 0 failed checks, 0 failed tests`
+  - regression: `make -C PPO_Project test` → exit 0; `2 tests, 13 checks, 0 failed checks, 0 failed tests` (first task; no earlier tests)
+  - scans: `clang --analyze` over src/tests → `clang-analyzer: 0 warnings over 2 files`; dependency audit: unavailable (no third-party code or manifest in the core)
+- [x] T002 | P0 | depends: T001 | AC-002 | Implement arena reset from upstream ship constants with the required health/ammo; done when: a test asserts three ships at (400+50i, 700) with 200 health, 100 missiles, 400 px/s speed, ready weapons.
+  - red: `make -C PPO_Project test` → exit 2; `tests/test_env.c:4:10: fatal error: 'env.h' file not found`
+  - green: `make -C PPO_Project test T=env_reset` → exit 0; `PASS env_reset_matches_upstream_ships`
+  - regression: `make -C PPO_Project test` → exit 0; `3 tests, 40 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T003 | P0 | depends: T002 | AC-002 | Apply factorized movement actions with upstream diagonal normalization plus clamping; done when: one-tick displacement tests match upstream `Control_Spaceship` arithmetic.
+  - red: `make -C PPO_Project test T=movement` → exit 2; `tests/test_env.c:39:5: error: call to undeclared function 'env_tick'`
+  - green: `make -C PPO_Project test T=movement` → exit 0; `PASS env_movement_matches_upstream_control`
+  - regression: `make -C PPO_Project test` → exit 0; `4 tests, 49 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T004 | P0 | depends: T003 | AC-002 | Fire missiles through a 30-tick weapon cooldown; done when: holding fire for 90 ticks spawns exactly three missiles.
+  - red: `make -C PPO_Project test T=weapon` → exit 2; `tests/test_env.c:73: CHECK(env.n_missiles == 3) failed`
+  - green: `make -C PPO_Project test T=weapon` → exit 0; `PASS env_weapon_cooldown_is_30_ticks`
+  - regression: `make -C PPO_Project test` → exit 0; `5 tests, 64 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T044 | P0 | depends: T004 | AC-002 | Limit each ship to 100 missiles per episode without refill; done when: holding fire for 3,300 ticks spawns exactly 100 missiles.
+  - red: `make -C PPO_Project test T=ammo` → exit 2; `tests/test_env.c:101: CHECK(env.stats.shots[0] == 100) failed`
+  - green: `make -C PPO_Project test T=ammo` → exit 0; `PASS env_ammo_is_100_without_refill`
+  - regression: `make -C PPO_Project test` → exit 0; `6 tests, 68 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T005 | P0 | depends: T044 | AC-002 | Advance missiles along the upstream accelerating upward path; done when: tick-by-tick y matches a closed-form fixture until removal above y = −10.
+  - red: `make -C PPO_Project test T=missile_flight` → exit 2; `tests/test_env.c:125: CHECK_NEAR(env.missiles[0].y, y) failed: 700 vs -10.6875`
+  - green: `make -C PPO_Project test T=missile_flight` → exit 0; `PASS env_missile_flight_matches_closed_form`
+  - regression: `make -C PPO_Project test` → exit 0; `7 tests, 74 checks, 0 failed checks, 0 failed tests` (T004's launch assertion now checks the post-move state, as upstream moves missiles in the launch frame)
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T006 | P0 | depends: T002 | AC-002 | Spawn seeded enemies every 90 ticks with upstream per-type stats; done when: a test asserts spawn ticks, x within [0, 800], per-type stats.
+  - red: `make -C PPO_Project test T=spawns` → exit 2; `tests/test_env.c:138: CHECK(env.stats.spawned == 1) failed`
+  - green: `make -C PPO_Project test T=spawns` → exit 0; `PASS env_spawns_seeded_enemies_every_90_ticks`
+  - regression: `make -C PPO_Project test` → exit 0; `8 tests, 86 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T007 | P0 | depends: T006 | AC-002 | Move enemies with the upstream zigzag reversal rule; done when: a fixture reproduces the reversal tick for a known start x.
+  - red: `make -C PPO_Project test T=zigzag` → exit 2; `tests/test_env.c:181:16: error: call to undeclared function 'env_add_enemy'`
+  - green: `make -C PPO_Project test T=zigzag` → exit 0; `PASS env_enemy_zigzag_reverses_in_window` (two wall expectations in the fixture were corrected to the upstream rule: right-wall sticking and in-window jitter)
+  - regression: `make -C PPO_Project test` → exit 0; `9 tests, 100 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T008 | P0 | depends: T005, T007 | AC-002 | Apply missile damage to every overlapping live enemy; done when: tests show 10 damage per overlapped enemy with the missile removed.
+  - red: `make -C PPO_Project test T=overlapping` → exit 2; `tests/test_env.c:230: CHECK_NEAR(env.enemies[0].health, 30.0f) failed: 40 vs 30`
+  - green: `make -C PPO_Project test T=overlapping` → exit 0; `PASS env_missile_damages_every_overlapping_live_enemy`
+  - regression: `make -C PPO_Project test` → exit 0; `10 tests, 110 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T009 | P0 | depends: T008 | AC-002 | Convert destroyed enemies into upstream explosions credited to the shooter; done when: a kill test asserts radius 50, damage 1, 18-tick cooldown, owner score + points.
+  - red: `make -C PPO_Project test T=explosion` → exit 2; `tests/test_env.c:257: CHECK(e->dead == 1) failed`
+  - green: `make -C PPO_Project test T=explosion` → exit 0; `PASS env_kill_becomes_explosion_credited_to_shooter`
+  - regression: `make -C PPO_Project test` → exit 0; `11 tests, 125 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T010 | P0 | depends: T009 | AC-002 | Apply contact damage under per-enemy attack cooldowns; done when: overlapping a type-1 enemy for 240 ticks deals exactly 10 damage.
+  - red: `make -C PPO_Project test T=contact` → exit 2; `tests/test_env.c:287: CHECK_NEAR(env.ships[0].health, 190.0f) failed: 200 vs 190`
+  - green: `make -C PPO_Project test T=contact` → exit 0; `PASS env_contact_damage_respects_enemy_cooldown`
+  - regression: `make -C PPO_Project test` → exit 0; `12 tests, 132 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T011 | P0 | depends: T010 | AC-004 | Remove ships from physics once health reaches zero; done when: a dead ship ignores actions, cannot fire, takes no damage.
+  - red: `make -C PPO_Project test T=dies` → exit 2; `tests/test_env.c:317: CHECK(env.ships[0].alive == 0) failed`
+  - green: `make -C PPO_Project test T=dies` → exit 0; `PASS env_ship_dies_at_zero_health`
+  - regression: `make -C PPO_Project test` → exit 0; `13 tests, 144 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T012 | P0 | depends: T007 | AC-002 | Count live enemies escaping below the arena; done when: the counter rises once per live enemy crossing y > 1000, never for explosions.
+  - red: `make -C PPO_Project test T=escaping` → exit 2; `tests/test_env.c:346: CHECK(env.stats.escapes == 1) failed`
+  - green: `make -C PPO_Project test T=escaping` → exit 0; `PASS env_counts_live_enemies_escaping_bottom`
+  - regression: `make -C PPO_Project test` → exit 0; `14 tests, 150 checks, 0 failed checks, 0 failed tests` (T006's same-seed check now compares spawn counts, since escapes legitimately remove enemies)
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T013 | P0 | depends: T011 | AC-004 | Step policy decisions with a 4-tick action repeat; done when: one decision advances exactly 4 ticks with the action held.
+  - red: `make -C PPO_Project test T=repeats` → exit 2; `tests/test_env.c:361:5: error: call to undeclared function 'env_step'`
+  - green: `make -C PPO_Project test T=repeats` → exit 0; `PASS env_step_repeats_action_for_4_ticks`
+  - regression: `make -C PPO_Project test` → exit 0; `15 tests, 158 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T014 | P0 | depends: T013 | AC-004 | End episodes on team death or the 120 s limit; done when: tests distinguish terminated from truncated flags.
+  - red: `make -C PPO_Project test T=terminated` → exit 2; `tests/test_env.c:382:9: error: no member named 'max_ticks' in 'Env'`
+  - green: `make -C PPO_Project test T=terminated` → exit 0; `PASS env_episode_ends_terminated_or_truncated`
+  - regression: `make -C PPO_Project test` → exit 0; `16 tests, 165 checks, 0 failed checks, 0 failed tests` (T002 now asserts max_ticks == 14400 instead of max_decisions)
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T015 | P0 | depends: T014, T012 | AC-005 | Compute per-ship rewards from configurable event coefficients; done when: a scripted-event fixture yields hand-computed rewards with matching component totals.
+  - red: `make -C PPO_Project test T=rewards` → exit 2; `tests/test_env.c:432:5: error: call to undeclared function 'env_rewards'`
+  - green: `make -C PPO_Project test T=rewards` → exit 0; `PASS env_rewards_follow_configured_coefficients`
+  - regression: `make -C PPO_Project test` → exit 0; `17 tests, 185 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T016 | P0 | depends: T014 | AC-006 | Encode ego-centric observations with nearest-first entity slots; done when: tests check length 139, [−1, 1] bounds, ordering, zero padding.
+  - red: `make -C PPO_Project test T=observation` → exit 2; `tests/test_env.c:455:11: error: use of undeclared identifier 'OBS_DIM'`
+  - green: `make -C PPO_Project test T=observation` → exit 0; `PASS env_observation_layout_and_bounds`
+  - regression: `make -C PPO_Project test` → exit 0; `18 tests, 219 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T017 | P0 | depends: T016 | AC-003 | Verify deterministic replay of seeded episodes; done when: identical seeds plus actions give identical state hashes over 10,000 ticks.
+  - red: `make -C PPO_Project test T=replay` → exit 2; `tests/test_env.c:558:11: error: call to undeclared function 'env_hash'`
+  - green: `make -C PPO_Project test T=replay` → exit 0; `PASS env_replay_is_deterministic`
+  - regression: `make -C PPO_Project test` → exit 0; `19 tests, 224 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 4 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T018 | P0 | depends: T001 | AC-007 | Implement batched dense-layer forward/backward passes; done when: finite-difference gradient checks pass.
+  - red: `make -C PPO_Project test T=dense` → exit 2; `tests/test_nn.c:5:10: fatal error: 'nn.h' file not found`
+  - green: `make -C PPO_Project test T=dense` → exit 0; `PASS nn_dense_gradients_match_finite_differences`
+  - regression: `make -C PPO_Project test` → exit 0; `20 tests, 226 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 6 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T019 | P0 | depends: T018 | AC-007 | Build orthogonally initialized tanh actor/critic MLPs; done when: tests check output shapes, init gains, deterministic forward passes.
+  - red: `make -C PPO_Project test T=mlp` → exit 2; `tests/test_nn.c:100:24: error: unknown type name 'Mlp'`
+  - green: `make -C PPO_Project test T=mlp` → exit 0; `PASS nn_mlp_init_shapes_and_gradients`
+  - regression: `make -C PPO_Project test` → exit 0; `21 tests, 239 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → first run `clang-analyzer: 1 warnings over 6 files` (uninitialised read in orthogonal init), fixed with calloc → `clang-analyzer: 0 warnings over 6 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T020 | P0 | depends: T019 | AC-007 | Compute factorized 3×3×2 categorical log-probabilities with entropy; done when: hand-computed fixtures plus gradient checks pass.
+  - red: `make -C PPO_Project test T=dist_` → exit 2; `tests/test_dist.c:4:10: fatal error: 'dist.h' file not found`
+  - green: `make -C PPO_Project test T=dist_` → exit 0; `PASS dist_factorized_logprob_entropy_and_gradients`
+  - regression: `make -C PPO_Project test` → exit 0; `22 tests, 252 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 8 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T021 | P0 | depends: T018 | AC-008 | Implement Adam with global gradient-norm clipping; done when: one step on fixed gradients matches reference values.
+  - red: `make -C PPO_Project test T=adam` → exit 2; `tests/test_nn.c:171:5: error: use of undeclared identifier 'Adam'`
+  - green: `make -C PPO_Project test T=adam` → exit 0; `PASS nn_adam_and_gradient_clipping`
+  - regression: `make -C PPO_Project test` → exit 0; `23 tests, 267 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 8 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T022 | P0 | depends: T019 | AC-008 | Save versioned checkpoints with dimension headers plus checksums; done when: round trips are exact while corrupt or mismatched files are rejected.
+  - red: `make -C PPO_Project test T=checkpoint` → exit 2; `tests/test_nn.c:237:11: error: call to undeclared function 'checkpoint_save'`
+  - green: `make -C PPO_Project test T=checkpoint` → exit 0; `PASS nn_checkpoint_roundtrip_and_rejection` (first implementation reported shape mismatches as length errors; the header is now checked first)
+  - regression: `make -C PPO_Project test` → exit 0; `24 tests, 289 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 8 files` after guarding a test helper's fopen; dependency audit: unavailable (no third-party code in the core)
+- [x] T023 | P0 | depends: T020 | AC-009 | Store per-ship rollout samples with activity masks; done when: a buffer test shows post-death steps masked.
+  - red: `make -C PPO_Project test T=rollout_masks` → exit 2; `tests/test_ppo.c:6:10: fatal error: 'ppo.h' file not found`
+  - green: `make -C PPO_Project test T=rollout_masks` → exit 0; `PASS ppo_rollout_masks_steps_after_death`
+  - regression: `make -C PPO_Project test` → exit 0; `25 tests, 299 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 10 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T024 | P0 | depends: T023 | AC-009 | Compute GAE with termination, truncation bootstrap, masks; done when: outputs match a hand-computed fixture.
+  - red: `make -C PPO_Project test T=gae` → exit 2; `tests/test_ppo.c:61:5: error: call to undeclared function 'rollout_gae'`
+  - green: `make -C PPO_Project test T=gae` → exit 0; `PASS ppo_gae_handles_termination_truncation_masks`
+  - regression: `make -C PPO_Project test` → exit 0; `26 tests, 314 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 10 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T025 | P0 | depends: T020 | AC-009 | Compute clipped PPO loss gradients for policy, value, entropy terms; done when: finite-difference checks pass with the expected clip fraction.
+  - red: `make -C PPO_Project test T=clipped_loss` → exit 2; `tests/test_ppo.c:96:19: error: call to undeclared function 'ppo_loss'`
+  - green: `make -C PPO_Project test T=clipped_loss` → exit 0; `PASS ppo_clipped_loss_gradients`
+  - regression: `make -C PPO_Project test` → exit 0; `27 tests, 320 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 10 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T026 | P0 | depends: T024, T025, T021 | AC-009 | Run shuffled minibatch epochs with per-minibatch advantage normalization; done when: each active sample is visited exactly once per epoch.
+  - red: `make -C PPO_Project test T=minibatch_epochs` → exit 2; `tests/test_ppo.c:135:41: error: unknown type name 'Agent'`
+  - green: `make -C PPO_Project test T=minibatch_epochs` → exit 0; `PASS ppo_minibatch_epochs_cover_active_samples`
+  - regression: `make -C PPO_Project test` → exit 0; `28 tests, 340 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 10 files` after zero-initialising the order buffer; dependency audit: unavailable (no third-party code in the core)
+- [x] T027 | P0 | depends: T026 | AC-010 | Train PPO on a toy target-reaching environment; done when: seed 1 exceeds the documented return threshold within the documented update budget.
+  - red: `make -C PPO_Project test T=toy_` → exit 2; `tests/test_toy.c:2:10: fatal error: 'toy.h' file not found`; first implementation then failed `tests/test_toy.c:46: CHECK(learned >= 0.5) failed` with every seed stuck at exactly -0.400 (a never-fire local optimum), so the toy task gained distance-progress shaping and a hit-rate criterion
+  - green: `make -C PPO_Project test T=toy_` → exit 0; `toy: random -1.212, PPO 1.749, hit rate 1.00 after 150 updates, 6992 episodes` (documented threshold: hit rate >= 0.9 and mean return >= 1.2 within 150 updates, seed 1)
+  - regression: `make -C PPO_Project test` → exit 0; `30 tests, 353 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 12 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T028 | P0 | depends: T027, T017 | AC-011 | Collect vectorized arena rollouts with one network per ship; done when: tests confirm per-ship networks, sample counts, death masks.
+  - red: `make -C PPO_Project test T=trainer_collects` → exit 2; `tests/test_trainer.c:5:10: fatal error: 'trainer.h' file not found`
+  - green: `make -C PPO_Project test T=trainer_collects` → exit 0; `PASS trainer_collects_per_ship_rollouts`
+  - regression: `make -C PPO_Project test` → exit 0; `31 tests, 370 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 14 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T029 | P0 | depends: T028 | AC-012 | Add a `train` command logging per-update CSV metrics; done when: a 2-update smoke run writes every documented column.
+  - red: `make -C PPO_Project test T=metrics_csv` → exit 2; `tests/test_train.c:5:10: fatal error: 'train.h' file not found`
+  - green: `make -C PPO_Project test T=metrics_csv` → exit 0; `PASS train_run_writes_metrics_csv`; `make -C PPO_Project smoke` → exit 0 with the 27-column header and 2 rows
+  - regression: `make -C PPO_Project test` → exit 0; `32 tests, 383 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 17 files` after making the test stop on a missing header; dependency audit: unavailable (no third-party code in the core)
+- [x] T030 | P1 | depends: T029, T022 | AC-012 | Write run manifests with periodic checkpoints; done when: a smoke run directory holds a manifest plus loadable checkpoints.
+  - red: `make -C PPO_Project test T=manifest` → exit 2; `tests/test_train.c:98:8: error: no member named 'checkpoint_every' in 'RunConfig'`
+  - green: `make -C PPO_Project test T=manifest` → exit 0; `PASS train_run_writes_manifest_and_checkpoints`; `make -C PPO_Project smoke` manifest shows `"status": "completed"`
+  - regression: `make -C PPO_Project test` → exit 0; `33 tests, 400 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 17 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T031 | P1 | depends: T030 | AC-012 | Update the three ship networks on parallel pthreads; done when: threaded results match serial results bit for bit for a fixed seed.
+  - red: `make -C PPO_Project test T=threaded` → exit 2; `tests/test_trainer.c:81:9: error: call to undeclared function 'trainer_update'`
+  - green: `make -C PPO_Project test T=threaded` → exit 0; `PASS trainer_threaded_update_matches_serial`
+  - regression: `make -C PPO_Project test` → exit 0; `34 tests, 405 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 17 files`; ThreadSanitizer build of the test runner, filter `threaded` → `1 tests, 5 checks, 0 failed checks, 0 failed tests` with no race reports; dependency audit: unavailable (no third-party code in the core)
+- [x] T032 | P0 | depends: T017 | AC-013 | Add an `eval` command reporting per-seed metrics for the random policy; done when: a dev-split JSON report lists 20 seed rows with mean, std, 95% CI.
+  - red: `make -C PPO_Project test T=eval_random` → exit 2; `tests/test_eval.c:5:10: fatal error: 'eval.h' file not found`
+  - green: `make -C PPO_Project test T=eval_random` → exit 0; `PASS eval_random_policy_dev_report`; CLI: `random on dev (20 scenarios): team score 100.70 +/- 10.57, deaths 1.30 +/- 0.32`
+  - regression: `make -C PPO_Project test` → exit 0; `35 tests, 468 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 19 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T033 | P0 | depends: T032, T022 | AC-013 | Evaluate PPO checkpoints in the `eval` command; done when: a checkpoint report matches the random report schema.
+  - red: `make -C PPO_Project test T=eval_` → exit 2; `tests/test_eval.c:113:11: error: call to undeclared function 'policy_ppo'`
+  - green: `make -C PPO_Project test T=eval_` → exit 0; `PASS eval_ppo_checkpoint_report_matches_schema`; CLI: `ppo on dev (20 scenarios): team score 0.30 +/- 0.43, deaths 0.10 +/- 0.13` (2-update smoke checkpoint)
+  - regression: `make -C PPO_Project test` → exit 0; `36 tests, 484 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 19 files`; dependency audit: unavailable (no third-party code in the core)
+- [x] T034 | P1 | depends: T032 | AC-014 | Load upstream `Game_Data` tables as a frozen legacy policy; done when: tests reproduce upstream probability lookups for fixed displacements.
+  - red: `make -C PPO_Project test T=legacy` → exit 2; `tests/test_legacy.c:2:10: fatal error: 'legacy.h' file not found`
+  - green: `make -C PPO_Project test T=legacy` → exit 0; `PASS legacy_tables_reproduce_upstream_lookups` (reference probabilities read independently with Python's json module)
+  - regression: `make -C PPO_Project test` → exit 0; `37 tests, 501 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 21 files` after checking the file-size seek/tell results; dependency audit: cJSON 1.7.19 (Homebrew, `pkg-config --modversion libcjson`), optional, used only by the legacy baseline
+- [x] T035 | P1 | depends: T034 | AC-014 | Port upstream target locking for the legacy policy; done when: a fixture matches upstream target choice, including ally fallback.
+  - red: `make -C PPO_Project test T=legacy_target` → exit 2; `tests/test_legacy.c:84:5: error: call to undeclared function 'legacy_targets'`
+  - green: `make -C PPO_Project test T=legacy_target` → exit 0; `PASS legacy_target_locking_matches_upstream`; CLI: `legacy on dev (20 scenarios): team score 102.60 +/- 9.97, deaths 0.75 +/- 0.24`
+  - regression: `make -C PPO_Project test` → exit 0; `38 tests, 507 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 21 files`; dependency audit: cJSON 1.7.19 (Homebrew), optional
+- [x] T036 | P1 | depends: T033 | AC-013 | Select the best checkpoint on development seeds; done when: selection picks the highest mean team score with deterministic tie-breaking.
+  - red: `make -C PPO_Project test T=select_best` → exit 2; `tests/test_select.c:5:10: fatal error: 'select.h' file not found` (header then named selection.h)
+  - green: `make -C PPO_Project test T=select_best` → exit 0; `PASS select_best_breaks_ties_deterministically`
+  - regression: `make -C PPO_Project test` → exit 0; `39 tests, 523 checks, 0 failed checks, 0 failed tests`
+  - scans: `clang --analyze` → `clang-analyzer: 0 warnings over 23 files` after reworking two stream reads; dependency audit: unavailable (no third-party code in the core)
+- [x] T037 | P1 | depends: T017 | AC-015 | Render the arena with original artwork in raylib; done when: `viewer --screenshot` saves a PNG showing ships, enemies, missiles.
+  - red: `make -C PPO_Project viewer-check` → exit 2; `make: *** No rule to make target \`viewer-check'.  Stop.`
+  - green: `make -C PPO_Project viewer-check` → exit 0; `screenshot: build/viewer-check.png 1000x1000, 17091 lit pixels, 3 ships, 9 enemies, 17 missiles`; image inspected: original ship, alien, explosion and missile sprites
+  - regression: `make -C PPO_Project test` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` (now including src/viewer.c) → `analyze: 0 findings`; dependency audit: raylib 6.2 (Homebrew, `pkg-config --modversion raylib`), viewer only
+- [x] T038 | P1 | depends: T037, T033 | AC-015 | Drive viewer ships from checkpoints or baselines; done when: `viewer --policy ppo --checkpoint PATH --screenshot` exits 0 with an image.
+  - red: `build/viewer --policy ppo --checkpoint runs/pilot/final.bin --frames 300 --screenshot build/viewer-ppo.png` → exit 2; `unknown option --policy`
+  - green: same command → exit 0; `screenshot: build/viewer-ppo.png 1000x1000, 17115 lit pixels, 3 ships, 9 enemies, 11 missiles`; `--policy legacy` → exit 0 (`5597 lit pixels, 3 ships, 3 enemies, 15 missiles`) after lowering the blank-frame guard from 1% to 0.2% lit pixels
+  - regression: `make -C PPO_Project test` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests`; `make -C PPO_Project viewer-check` → exit 0
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: raylib 6.2 and cJSON 1.7.19 (Homebrew)
+- [x] T039 | P2 | depends: T038 | AC-015 | Show per-ship score, health, kills in a HUD with pause/speed keys; done when: a screenshot shows the HUD text.
+  - red: `make -C PPO_Project viewer-check` (now requiring `hud:` lines) → exit 2; `make: *** [viewer-check] Error 1`
+  - green: `make -C PPO_Project viewer-check` → exit 0; `hud: Ship 0  score 2  kills 1  health 197  ammo 63` … `hud: Team score 14   escapes 4`; screenshot inspected: HUD and key hints drawn
+  - regression: `make -C PPO_Project test` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: raylib 6.2 (Homebrew)
+- [x] T040 | P1 | depends: T017 | AC-016 | Add sanitizer plus static-analysis Makefile targets; done when: both targets report zero findings over tests plus 1M random decisions.
+  - red: `make -C PPO_Project test T=invariants` → exit 2; `tests/test_env.c:587:11: error: call to undeclared function 'env_check_invariants'`; `make sanitize` → exit 2; `make: *** No rule to make target \`sanitize'.  Stop.`
+  - green: `make -C PPO_Project sanitize` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests` then `stress: 1000000 decisions, 279 episodes, peak 16/64 enemies, 28/64 missiles, 0 violations`
+  - regression: `make -C PPO_Project test` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → exit 0; `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T041 | P1 | depends: T033 | AC-017 | Document build, training, evaluation, viewing in the README; done when: every README command runs as written.
+  - red: unavailable (documentation task; strict red/green not demonstrable — the validation is running every README command)
+  - green: README command check → exit 0; `11 README commands ran, 1 skipped` (the skipped 20-minute training example matches the pilot's command with a different seed and duration; the interactive viewer lines ran in screenshot mode)
+  - regression: the README check itself ran `make test`, `make sanitize`, `make analyze`, `make smoke`, `make viewer-check`, all exit 0
+  - scans: `make analyze` → `analyze: 0 findings` (inside the README check)
+- [x] T047 | P0 | depends: T016 | AC-021 | Predict a missile's closest approach to a live enemy if fired now; done when: tests firing real missiles confirm every predicted hit or miss.
+  - red: `make -C PPO_Project test T=fire_solution` → exit 2; `tests/test_env.c:646:34: error: call to undeclared function 'env_fire_solution'`
+  - green: `make -C PPO_Project test T=fire_solution` → exit 0; `PASS env_fire_solution_matches_real_missiles` (1,152 grid cases agree with missiles fired in the real simulation; the return value became the horizontal offset plus a hit flag after a first version returned only the contact distance)
+  - regression: `make -C PPO_Project test` → exit 0; `41 tests, 542 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T048 | P0 | depends: T047 | AC-006 | Add fire-solution features to the observation; done when: tests check length 148 with per-slot values matching the predictor.
+  - red: `make -C PPO_Project test T=observation` → exit 2; `tests/test_env.c:714:16: error: call to undeclared function 'env_shot_quality'`
+  - green: `make -C PPO_Project test T=observation` → exit 0; `PASS env_observation_fire_solution_features` with `PASS env_observation_layout_and_bounds` (layout test updated to 148 floats)
+  - regression: `make -C PPO_Project test` → exit 0; `42 tests, 551 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T049 | P0 | depends: T047 | AC-022 | Add potential-based alignment shaping to the reward; done when: a fixture shows 0.5 · (γΦ' − Φ) with Φ' = 0 at death.
+  - red: `make -C PPO_Project test T=alignment_shaping` → exit 2; `tests/test_env.c:726:20: error: no member named 'align' in 'RewardConfig'`
+  - green: `make -C PPO_Project test T=alignment_shaping` → exit 0; `PASS env_alignment_shaping_is_potential_based` (fixtures for gain, loss, no-ammo and death, plus the γ = 1 telescoping check over a full episode)
+  - regression: `make -C PPO_Project test` → exit 0; `43 tests, 562 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T050 | P0 | depends: T015 | AC-022 | Penalize ship time inside the 60 px edge band; done when: a fixture charges the penalty only inside the band.
+  - red: `make -C PPO_Project test T=edge_penalty` → exit 2; `tests/test_env.c:794:20: error: no member named 'edge' in 'RewardConfig'`
+  - green: `make -C PPO_Project test T=edge_penalty` → exit 0; `PASS env_edge_penalty_only_inside_band`
+  - regression: `make -C PPO_Project test` → exit 0; `44 tests, 565 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T051 | P1 | depends: T048, T050 | AC-023 | Report edge-time share with predicted-hit shot share in metrics; done when: CSV plus JSON tests find both values.
+  - red: `make -C PPO_Project test T=edge_ticks` → exit 2; `tests/test_env.c:832:21: error: no member named 'edge_ticks' in 'EpisodeStats'`
+  - green: `make -C PPO_Project test T=edge_ticks` → exit 0; `PASS env_counts_edge_ticks_and_aimed_shots`; the CSV header test (aimed_share, edge_share) and the eval JSON test (edge_share, aimed_shot_share) pass
+  - regression: `make -C PPO_Project test` → exit 0; `45 tests, 573 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T052 | P1 | depends: T049 | AC-024 | Default to λ 0.99 with sampled evaluation; done when: a defaults test passes while `eval --greedy` still works.
+  - red: `make -C PPO_Project test` → exit 2; `tests/test_eval.c:152:11: error: use of undeclared identifier 'EVAL_SAMPLE_DEFAULT'`
+  - green: `make -C PPO_Project test T=defaults_to_sampled` → exit 0; `PASS eval_defaults_to_sampled_actions`; CLI: default report `"sample": true,`, `--greedy` report `"sample": false,`, manifest `"gamma": 0.99, "lambda": 0.99`
+  - regression: `make -C PPO_Project test` → exit 0; `46 tests, 582 checks, 0 failed checks, 0 failed tests` (T026's λ assertion moved to 0.99)
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T053 | P1 | depends: T051, T052 | AC-024 | Run a 10-minute pilot against random on dev; done when: a pilot report records MQ-3 plus MQ-4 measurements.
+  - red: before the fixes, the 10-minute control run's best dev checkpoint scored `dev team score 69.00` with ships at the walls 86–97% of the time
+  - green: `ppo select --run-dir runs/pilot2` (seed 101, 600 s, 3,796,992 decisions) → `selected runs/pilot2/final.bin (update 1854): dev team score 119.30, deaths 0.00`; vs random/legacy: accuracy 0.283 / 0.244 / 0.262, aimed share 0.243 / 0.231 / 0.216, edge share 0.028 / 0.113 / 0.047; `MQ-1 FAIL` (+18.6 over random vs a 20.9 bar), `MQ-2 PASS`, `MQ-3 PASS`, `MQ-4 PASS`
+  - regression: `make -C PPO_Project test` → exit 0; `47 tests, 589 checks, 0 failed checks, 0 failed tests`
+  - scans: no code changed in this task; dependency audit: unavailable (no third-party code in the core)
+- [x] T054 | P1 | depends: T038, T036 | AC-015 | Let the viewer follow a run's newest checkpoint; done when: a test finds the newest checkpoint while a screenshot run shows its update.
+  - red: `make -C PPO_Project test T=latest_checkpoint` → exit 2; `tests/test_select.c:74:11: error: call to undeclared function 'latest_checkpoint'`
+  - green: `make -C PPO_Project test T=latest_checkpoint` → exit 0; `PASS select_finds_latest_checkpoint`; `build/viewer --run-dir runs/pilot2 --frames 60 --screenshot build/viewer-follow.png` → exit 0 with `hud: Time 2.0 / 120 s   seed 1000   ppo update 1800 (sampled, following run)`
+  - regression: `make -C PPO_Project test` → exit 0; `47 tests, 589 checks, 0 failed checks, 0 failed tests`; `make -C PPO_Project viewer-check` → exit 0
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: raylib 6.2 (Homebrew)
+- [ ] T042 | P1 | depends: T031, T036, T053 | AC-018 | Train seed 1 on this Mac for 20 minutes; done when: its run directory holds full metrics plus a selected checkpoint.
+  - deferred: stopped by the user after 172 s ("don't run anymore seeds as it's enough for now"); the partial run was discarded.
+- [x] T045 | P1 | depends: T036 | AC-020 | Add a container training script that runs locally before Modal; done when: a local run builds, tests, smoke-trains, trains, archives one seed.
+  - red: `sh scripts/container_train.sh build/container-check 7 4096 30` → exit 127; `sh: scripts/container_train.sh: No such file or directory`
+  - green: `sh scripts/container_train.sh runs/container-check 7 4096 30 --checkpoint-every 1` → exit 0; `40 tests, 533 checks, 0 failed checks, 0 failed tests`, `smoke: ok`, `"status":"completed"`, `archive: runs/container-check.tar.gz (3.0M)` holding manifest, metrics, checkpoints, selection, logs
+  - regression: the script itself runs the full suite: `40 tests, 533 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings` (shell script not covered; no shellcheck installed)
+- [ ] T046 | P1 | depends: T045, T053 | AC-018 | Train seeds 2–3 on this Mac for 20 minutes each; done when: both run directories hold full metrics plus a selected checkpoint.
+  - deferred: stopped with T042 at the user's request.
+- [x] T055 | P1 | depends: T053 | AC-025 | Keep the pilot's selected checkpoint in `checkpoints/` with a small index; done when: git tracks that checkpoint plus the index, never logs or periodic checkpoints.
+  - red: `git ls-files PPO_Project/checkpoints` → no files (`0 tracked checkpoint files`)
+  - green: `git ls-files PPO_Project/checkpoints` → `PPO_Project/checkpoints/index.json` and `PPO_Project/checkpoints/ppo_seed101.bin` (868,096 bytes); reloading it reproduces `team score 119.30 +/- 10.29, deaths 0.00` on dev
+  - regression: `git ls-files PPO_Project` lists no files under runs/ or build/ (both still ignored)
+  - scans: not applicable (data and docs only)
+- [x] T056 | P1 | depends: T049, T048 | AC-026 | Compute the shaping potential over the ship's observed enemy slots only; done when: a test shows an aligned enemy outside the 8 slots adds nothing while the potential equals the best slot input.
+  - red: `make -C PPO_Project test T=potential_uses` → exit 2; `tests/test_env.c:872:16: error: call to undeclared function 'env_potential'`
+  - green: `make -C PPO_Project test T=potential_uses` → exit 0; `PASS env_potential_uses_observed_slots`; the checkpoint's dev play metrics are identical before and after (only the shaped return moves, by design)
+  - regression: `make -C PPO_Project test` → exit 0; `48 tests, 596 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T057 | P1 | depends: T056, T028 | AC-027 | Treat the 120 s limit as terminal for learning; done when: tests show zero potential with zero bootstrap at the limit.
+  - red: `make -C PPO_Project test T=time_limit` → exit 2; `tests/test_env.c:910: CHECK_NEAR(env.stats.parts[0].align, 0.5 * 0.99 * q - 0.5 * q) failed: 0.49000001 vs -0.005` with `tests/test_trainer.c:119: CHECK(nonzero_bootstrap == 0) failed`
+  - green: `make -C PPO_Project test T=time_limit` → exit 0; `PASS env_time_limit_is_terminal_for_shaping`, `PASS trainer_time_limit_has_no_bootstrap`; the γ = 1 telescoping check now expects 0 at every ending; the checkpoint's dev play metrics are identical
+  - regression: `make -C PPO_Project test` → exit 0; `50 tests, 605 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T059 | P1 | depends: T057 | AC-028 | Report the mean reward components per ship in eval reports; done when: a test finds all nine components summing to the reported return.
+  - red: `make -C PPO_Project test T=reward_components` → exit 2; `tests/test_eval.c:184:25: error: no member named 'reward_kill' in 'EpisodeResult'`
+  - green: `make -C PPO_Project test T=reward_components` → exit 0; `PASS eval_reports_reward_components` (nine components per seed sum to return_mean within 1e-4)
+  - regression: `make -C PPO_Project test` → exit 0; `51 tests, 618 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T058 | P1 | depends: T059 | AC-028 | Write REWARD.md with worked calculations for the three ships; done when: its numbers reproduce from the cited tests or commands.
+  - red: unavailable (documentation task; the two worked-example tests pin behaviour that already existed rather than drive new code)
+  - green: `make test T=reward` → exit 0; `4 tests, 51 checks, 0 failed checks, 0 failed tests`; every command in REWARD.md section 12 ran (exit 0), and all 42 numbers in section 9 match fresh `ppo eval` reports
+  - regression: `make test` → exit 0; `53 tests, 636 checks, 0 failed checks, 0 failed tests`; `make sanitize` → exit 0 with `stress: 1000000 decisions, 279 episodes, peak 16/64 enemies, 28/64 missiles, 0 violations`; smoke and viewer-check exit 0
+  - scans: `make analyze` → `analyze: 0 findings`; figures marked (audit) in REWARD.md come from a one-off probe not kept in the repo
+- [x] T043 | P1 | depends: T055, T035 | AC-019 | Evaluate the kept checkpoint once on test seeds against baselines; done when: the report records MQ-1 through MQ-4 as pass or fail.
+  - red: before this task, `ppo eval --split test` without `--final` → exit 1 (`eval: the test split is held out; pass --final for the one final evaluation`); no test-split result existed
+  - green: `ppo eval --policy ppo --checkpoint checkpoints/ppo_seed101.bin --split test --final` → `team score 117.90 +/- 3.62, deaths 0.00 +/- 0.00`; random `103.68 +/- 4.65, deaths 1.40`; legacy `103.78 +/- 4.42, deaths 0.65`; judged: `MQ-1 PASS`, `MQ-2 PASS`, `MQ-3 PASS` (edge 0.033), `MQ-4 PASS` (accuracy 0.288 vs 0.256, aimed 0.243 vs 0.229); single training seed, so the 2-of-3-seeds clause is not assessable
+  - regression: `make -C PPO_Project test` → exit 0; `47 tests, 589 checks, 0 failed checks, 0 failed tests`
+  - scans: no code changed in this task
+- [x] T060 | P1 | depends: T059 | AC-029 | Raise the default per-missile cost from −0.01 to −0.05; done when: the coefficient test expects `shot` = −0.05.
+  - red: `make -C PPO_Project test T=rewards_follow` → exit 2; `tests/test_env.c:420: CHECK_NEAR(cfg.shot, -0.05) failed: -0.00999999978 vs -0.05`
+  - green: `make -C PPO_Project test T=rewards_follow` → exit 0; `PASS env_rewards_follow_configured_coefficients`. The two REWARD.md example tests moved by exactly −0.04 per shot (returns 0.59 → 0.43, 0.2771 → 0.1971, −0.2429 → −0.3229) and were re-pinned; the document follows in T063
+  - regression: `make -C PPO_Project test` → exit 0; `53 tests, 636 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; dependency audit: unavailable (no third-party code in the core)
+- [x] T061 | P1 | depends: T060 | AC-029 | Add a `bomb` reward term for health lost to explosions; done when: a fixture charges −0.05 per explosion HP in total while body contact still costs −0.01 per HP.
+  - red: `make -C PPO_Project test T=explosion_damage` → exit 2; `tests/test_env.c:925:20: error: no member named 'bomb' in 'RewardConfig'` (also `no member named 'bomb_health_lost' in 'ShipEvents'`)
+  - green: `make -C PPO_Project test T=explosion_damage` → exit 0; `PASS env_explosion_damage_costs_extra`: a 10 HP body hit costs −0.10 with no bomb part, one explosion HP costs −0.01 − 0.04 = −0.05 (−0.01 with `--bomb 0`), and a 0.5 HP final hit costs −0.02. REWARD.md example 1 moves from 0.43 to −0.01 because its wreck drifts onto the ship for 11 HP (bomb −0.44); re-pinned. The eval component-sum tolerance went from 1e-4 to 1e-3: on the 20 dev episodes the ten float32 sums differ from the return by up to 1.1e-4 at |return| ≈ 15, while leaving out the bomb part leaves a gap of 0.96–3.84
+  - regression: `make -C PPO_Project test` → exit 0; `54 tests, 654 checks, 0 failed checks, 0 failed tests`; `make smoke` → exit 0; `ppo train … --bomb -0.1 --shot -0.02` writes `"bomb": -0.1` to the manifest
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; `make -C PPO_Project sanitize` → exit 0, `stress: 1000000 decisions, 279 episodes, peak 16/64 enemies, 28/64 missiles, 0 violations`; dependency audit: unavailable (no third-party code in the core)
+- [x] T062 | P1 | depends: T061 | AC-030 | Report explosion damage with ammo-out time in eval reports; done when: an eval test finds both metrics matching the episode stats.
+  - red: `make -C PPO_Project test T=ammo_out` → exit 2; `tests/test_env.c:974:29: error: no member named 'ammo_out_tick' in 'EpisodeStats'` (also `no member named 'bomb_damage' in 'EpisodeStats'`)
+  - green: `make -C PPO_Project test T=ammo_out` → exit 0; `PASS env_tracks_ammo_out_and_bomb_damage` (100th missile at tick 2970 → `ammo_out_tick` 2971; a same-tick explosion plus body hit → damage 11, bomb damage 1) and `PASS eval_reports_ammo_out_and_bomb_damage` (a replay of scenario 1000 matches the report within 1e-9; both keys are in the JSON summary)
+  - regression: `make -C PPO_Project test` → exit 0; `56 tests, 667 checks, 0 failed checks, 0 failed tests`
+  - scans: `make -C PPO_Project analyze` → `analyze: 0 findings`; `make -C PPO_Project sanitize` → exit 0, `stress: 1000000 decisions, 279 episodes, peak 16/64 enemies, 28/64 missiles, 0 violations`; dependency audit: unavailable (no third-party code in the core)
+- [x] T063 | P1 | depends: T062 | AC-028 | Update REWARD.md for the amendment-5 reward; done when: its worked examples match the pinned tests again.
+  - red: a scratch check of REWARD.md against the pinned values (`doccheck.py`, not kept) → exit 1; 15 numbers missing (for example `**+0.445**`, `Episode return: **−0.01**`, `| bomb | −2.351 | −2.397 | −2.365 |`) with 9 stale ones present (for example `Episode return: **+0.59**`, `**+0.87**`)
+  - green: the same check → exit 0; `doccheck: all 16 pinned numbers present, 9 stale ones gone`. Section 9 was regenerated from fresh `ppo eval` dev reports for the kept checkpoint, random, plus the upstream tables (components sum to the return within 5e-6); section 10.3 records the amendment
+  - regression: `make -C PPO_Project test T=reward` → exit 0; `4 tests, 54 checks, 0 failed checks, 0 failed tests`; `T=explosion_damage` and `T=ammo_out` pass. HOW_TO_RUN.md no longer hard-codes a stale test count (it said 47)
+  - scans: not applicable (documentation only; no code changed)
+- [x] T064 | P1 | depends: T063 | AC-031 | Retrain seed 101 for 15 minutes with the new reward; done when: a dev comparison with the kept checkpoint records ammo-out time, explosion damage, score, plus deaths.
+  - red: before the retrain, the kept checkpoint on dev (`ppo eval --policy ppo --checkpoint checkpoints/ppo_seed101.bin`) → `team score 119.30 +/- 10.29, deaths 0.00 +/- 0.00`; `ammo_out_seconds` 27.0, `bomb_damage` 176.3 of 216.9 HP
+  - green: `ppo train --run-dir runs/bomb101 --seed 101 --total-decisions 50000000 --max-seconds 900 --checkpoint-every 150` (built at 0e368c1) → exit 0, `"status": "time_limit"`, 3,247 updates, 6,649,856 decisions; `ppo select --run-dir runs/bomb101` → `selected runs/bomb101/final.bin (update 3247): dev team score 253.00, deaths 0.20, from 22 checkpoints`; its dev report → `team score 253.00 +/- 9.80, deaths 0.20 +/- 0.18`, `ammo_out_seconds` 81.0, `bomb_damage` 145.7 (2.6 HP per kill vs 6.8), accuracy 0.729 vs 0.283, aimed share 0.809 vs 0.243. Trade-off: body damage 249.1 vs 40.6 HP, ships lost 0.20 vs 0.00 (4 of 60 ship-episodes, all after 87 s). Update 2100 (≈ 585 s) scored 174.0 with no losses, but ship 0 had stopped firing there (2.4 shots per episode)
+  - regression: no code changed in this task; the full suite at 80db9e4: `make test` → exit 0, `56 tests, 667 checks, 0 failed checks, 0 failed tests`
+  - scans: not applicable (training run only); single seed, best of 22 dev scores, no held-out test-split run
+- [x] T065 | P1 | depends: T064 | AC-025 | Keep the retrained checkpoint in `checkpoints/` beside the original; done when: git tracks `ppo_seed101_v2.bin` with a matching sha256 in `index.json`.
+  - red: a scratch check (`ckcheck.sh`, not kept) → exit 1; `not tracked: checkpoints/ppo_seed101_v2.bin`
+  - green: the same check → exit 0; `ckcheck: checkpoints/ppo_seed101_v2.bin tracked, sha256 d40ceda3a5c3fe6ec560c4a4551c7a52f731e67728bd7b6aa33820d93e2bac45 matches index.json` (868,096 bytes, a copy of `runs/bomb101/selected.bin`); reloading it from `checkpoints/` reproduces `team score 253.00 +/- 9.80, deaths 0.20 +/- 0.18` on dev
+  - regression: `ppo eval` of `checkpoints/ppo_seed101.bin` still gives `team score 119.30 +/- 10.29, deaths 0.00 +/- 0.00`; `git ls-files PPO_Project/runs PPO_Project/build` lists 0 files
+  - scans: not applicable (data and index only); `python3 -m json.tool checkpoints/index.json` → valid
+- [x] T066 | P1 | depends: T065 | AC-019 | Evaluate the retrained checkpoint once on the test split against both baselines; done when: the report records MQ-1 through MQ-4 as pass or fail.
+  - red: before this task no test-split report existed for the retrained checkpoint (`ls runs/test-ppo-v2.json` → `No such file or directory`)
+  - green: `ppo eval --policy ppo --checkpoint checkpoints/ppo_seed101_v2.bin --split test --final` → `team score 250.34 +/- 3.95, deaths 0.12 +/- 0.06`; random `103.68 +/- 4.65, deaths 1.40 +/- 0.16`; legacy `103.78 +/- 4.42, deaths 0.65 +/- 0.12`; judged: `MQ-1 PASS` (+146.66 over random against a bar of 8.59; +146.56 over legacy against 8.36), `MQ-2 PASS` (0.12 vs 1.40), `MQ-3 PASS` (edge 0.041), `MQ-4 PASS` (accuracy 0.734 vs 0.256, aimed 0.810 vs 0.229). Also: ammo runs out at 81.1 s (original 27.0 s), explosion damage 140.6 HP (original 179.8), body damage 248.0 HP (original 44.2). Single training seed, so the 2-of-3-seeds clause is not assessable
+  - regression: re-running the original checkpoint on test for the new metric fields reproduces its T043 game metrics exactly (`team score 117.90 +/- 3.62, deaths 0.00 +/- 0.00`); the baselines match their T043 reports
+  - scans: no code changed in this task
+- [x] T067 | P2 | depends: T066 | AC-017 | Point HOW_TO_RUN at the retrained checkpoint with its test results; done when: each of its checkpoint commands runs as written.
+  - red: a scratch check (`howcheck.sh`, not kept) → exit 1; `HOW_TO_RUN.md does not name checkpoints/ppo_seed101_v2.bin`
+  - green: the same check → exit 0; `[0] ./build/viewer --policy ppo --checkpoint checkpoints/ppo_seed101_v2.bin` (run headless with `--frames 60 --screenshot`: `3 ships, 2 enemies, 2 missiles`) and `[0] ./build/ppo eval --policy ppo --checkpoint checkpoints/ppo_seed101_v2.bin --output runs/dev-ppo.json` → `team score 253.00 +/- 9.80, deaths 0.20 +/- 0.18`, the example line the doc shows. Section 6 now reports both checkpoints on the test split; REWARD.md 10.3 no longer says the checkpoint is uncommitted or untested
+  - regression: `doccheck.py REWARD.md` → `doccheck: all 16 pinned numbers present, 9 stale ones gone`
+  - scans: not applicable (documentation only)
+
+## 6. Open questions
+
+Q1 and Q2 were confirmed explicitly; the other items were approved as part of the drafted PRD.
+
+- **Q1 — Homebrew packages.** Resolved: approved. Install `raylib`, `pkg-config`, and `cjson` with `brew install raylib pkg-config cjson`; upstream's root game already needs raylib and cJSON. Impact: needed only for the viewer and the legacy baseline. Blocks T034–T039; nothing else.
+- **Q2 — Compute budget.** Resolved (amendment 2): 20 minutes per seed, all on this Mac; Modal dropped.
+- **Q3 — Reward coefficients.** Defaults as in section 3.2: hit shaping +0.02, shot cost −0.05 (−0.01 until amendment 5), an extra −0.04 per HP lost to explosions (amendment 5), death −2, escape −0.05 per alive ship, ally share 0. All are CLI-configurable and do not block.
+- **Q4 — Episode length.** Episodes are truncated at 120 simulated seconds; upstream runs until every ship dies. Does not block.
+- **Q5 — Upstream quirks ported as-is.** Enemy attack cooldowns are shared across ships, one missile can damage several overlapping enemies, the zigzag modulo rule lets enemies stick at walls, and missiles launch from the ship's top-left corner. Fixing these would change the game, so they stay and are documented. Does not block.
+- **Q6 — Timestep.** Fixed 1/120 s ticks with a 4-tick action repeat (30 decisions/s); cooldowns become integer ticks. Does not block.
+- **Q7 — Layout.** All new code lives in `PPO_Project/` on `feature/ppo-training`. Local `main` was fast-forwarded to upstream `e683c7d`; nothing has been pushed. Assets are read from the root `Pictures/` and `Fonts/` rather than copied. Does not block.
+- **Q8 — Model shape.** 8 nearest enemy/explosion slots, 8 nearest missile slots, a 139-float observation, 2 × 128 tanh hidden layers. Does not block.
+- **Q9 — Evaluation mode.** Resolved (amendment 2): seeded sampling is the primary evaluation; greedy remains available as `--greedy`.
+- **Q10 — Leftovers.** The untracked root `build/` and `artifacts/` directories from the old branch stay where they are. Does not block.
+- **Q11 — Required rule changes.** Resolved by the user: 200 ship health, 100 missiles per ship per episode with no refill. These intentionally differ from upstream and are labelled as such in code and docs.
+- **Q12 — Shaping and edge defaults.** Assumptions: shaping coefficient 0.5, edge penalty 0.003 per decision, edge band 60 px from the side walls or bottom. All are configurable; the pilot (T053) checks them. Does not block.
